@@ -247,6 +247,14 @@ func _wound_mark(part: String) -> Dictionary:
 	# Invert hand_target_local's x for the left hand: x = -hx * 0.5 * S - 0.1 * S.
 	return {"x": clampf(-(tx + 0.1 * S) / (0.5 * S), -2.0, 2.0), "y": y, "tuck": 1.0}
 
+## How long a man watches a blow come before he does anything about it (s): a skilled one soon, a novice late, and a ringing head later still (user: head damage changes how he works).
+static func see_time(skill_: float, ringing: float) -> float:
+	return 0.3 - 0.24 * skill_ + 0.3 * ringing
+
+## The chance that he does something about it (before his personality's own): by his skill, less for a wound and for a ringing head.
+static func dodge_chance(skill_: float, wound_: float, ringing: float) -> float:
+	return (0.06 + 0.84 * skill_) * (1.0 - 0.6 * wound_) * (1.0 - 0.5 * ringing)
+
 ## Bends the input for the reaction under way (called last, so it rides over the plan).
 ## The reaction's clock, run every step whatever else he is doing (going for a weapon on the
 ## sand, wrestling): a reaction does not last longer for being out of the fight a moment.
@@ -685,11 +693,11 @@ func update(dt0: float, target: Node3D, world := {}) -> Dictionary:
 	# Defence (user: fight like a real gladiator): seeing a blow come, a skilled man puts his shield
 	# in its way, meets it with his own blade or steps out of its reach; a poor one sees it late
 	# and seldom does anything about it. A master breaks off his own stroke to do it.
-	var see_t := 0.3 - 0.24 * skill
+	var see_t := see_time(skill, c.ringing())
 	var shield_w = c.weapons.L if c.weapons.L and c.weapons.L.is_shield else null
 	if incoming > 0.0 and not threat_met and threat_t >= see_t and not rage and c.state == "stand" and dodge_cool <= 0.0 and (state != "attack" or (skill > 0.75 and key == 0)):
 		threat_met = true
-		if rng.randf() < ((0.06 + 0.84 * skill) * (1.0 - 0.6 * c.wound()) + float(p.get("dodge", 0.0))):
+		if rng.randf() < dodge_chance(skill, c.wound(), c.ringing()) + float(p.get("dodge", 0.0)):
 			dodge_t = 0.45
 			dodge_cool = 0.5
 			if shield_w:

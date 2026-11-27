@@ -19,7 +19,7 @@ const INFO := {
 	STOMACH: {"name": "stomach", "color": 0xc0806a},
 	GUTS: {"name": "guts", "color": 0xd49184},
 	SPINE: {"name": "spine", "color": 0xe8e0c8},
-	BRAIN: {"name": "brain", "color": 0xd9a3a8},
+	BRAIN: {"name": "brain", "color": 0xe8a2b2},
 	RIBS: {"name": "ribs", "color": BONE},
 	PELVIS: {"name": "pelvis", "color": BONE},
 	SKULL: {"name": "skull", "color": BONE},
@@ -131,7 +131,7 @@ static func dress(body_parts: Array) -> void:
 				if id == NONE:
 					id = bone_at(name, int(v[0]), int(v[1]), int(v[2]))
 			if id != NONE:
-				v[4] = _organ_rgb(id, int(v[0]), int(v[1]), int(v[2]))
+				v[4] = _organ_rgb(id, int(v[0]), int(v[1]), int(v[2]), name)
 				if is_bone(id):
 					v[5] = 1
 			if v.size() < 7:
@@ -140,7 +140,9 @@ static func dress(body_parts: Array) -> void:
 				v[6] = id
 
 ## An organ's colour at a cell: guts in coils, lungs spongy, the rest a little mottled.
-static func _organ_rgb(id: int, x: int, y: int, z: int) -> int:
+static func _organ_rgb(id: int, x: int, y: int, z: int, part := "") -> int:
+	if id == BRAIN:
+		return _brain_rgb(x, y, z, part == "head")
 	var c := Color.hex(int(INFO[id].color) << 8 | 0xff)
 	var k := 1.0
 	if id == GUTS:
@@ -148,6 +150,22 @@ static func _organ_rgb(id: int, x: int, y: int, z: int) -> int:
 	elif (x * 7 + y * 3 + z * 5) % 4 == 0:
 		k = 0.9
 	return (int(c.r8 * k) << 16) | (int(c.g8 * k) << 8) | int(c.b8 * k)
+
+## The brain, to be known for one when a head is opened (user: bigger and clearer): a bright pink with its folds dark, and in a man's head the deep fissure between its two halves down the middle, the cerebellum
+## a greyer lilac low at the back (his head's cells: x 2..7 across, y 6..9 up, z 2..7 from the back). A beast's grid is its own: only the folds.
+static func _brain_rgb(x: int, y: int, z: int, man: bool) -> int:
+	var c := Color.hex(int(INFO[BRAIN].color) << 8 | 0xff)
+	if man and x == 4 and y >= 7:
+		c = Color.hex(0x7a3a52ff)
+	elif man and y == 6 and z <= 3:
+		c = Color.hex(0xb48fb2ff)
+	else:
+		var f := (x * 3 + z * 2 + y * 5) % 5
+		if f == 0:
+			c = c.darkened(0.26)
+		elif f == 1:
+			c = c.lightened(0.07)
+	return (c.r8 << 16) | (c.g8 << 8) | c.b8
 
 ## Species whose insides are not a beast's (a shell of chitin round a different body): no organs.
 ## (Every beast has them now, the shelled ones too: a scorpion's and a spider's lie under their shell,

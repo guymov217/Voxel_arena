@@ -365,6 +365,15 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   a throw, a punch, a giant brought down), and when the match ends the best one replays in slow
   motion, letterboxed, with a caption (`scripts/game/killcam.gd`); its camera orbits the two men and is held on the sand side
   of the wall wherever the kill was (`Killcam.orbit_fit`).
+- **A hurt head costs him** (`tests/test_brain.gd`; user, #350). A knock's ringing (`Fighter.concussion`) clears with the seconds; a brain
+  torn or bruised leaves a floor under it for the rest of the bout (`Fighter.brain_floor`: the share of the brain gone, of what kills
+  (`BRAIN_DEATH`), times `BRAIN_FLOOR`, 0.75; binding wounds does not mend it). Any ringing over wine's (`Fighter.ringing()`: wine is a floor
+  of its own and costs nothing) slows him (`CONC_SLOW`, 30% at the worst), weakens his arms (`CONC_WEAK`, 25%, in `stam_f`, so the native arm
+  drive follows), unsteadies him (balance and neck, as before) and makes a bot see a blow late and do less about it (`Bot.see_time`,
+  `Bot.dodge_chance`). A player's view swims, shifted, ghosted and blurred (`Hud.DAZE_SHADER`, drawn only while it rings), and closes in at
+  the edges. The brain in a man's head is pink with darker folds, a fissure between its halves and a lilac cerebellum low at the back
+  (`Anatomy._brain_rgb`); it already fills the whole cranium (144 voxels), so it is made clearer, not larger: a larger one would be a thinner
+  skull and a more deadly blow to the head.
 - **Music**: a procedural band (frame drum, riq, drone, lyre, horn) in the Phrygian dominant. It
   has a loop for each state (menu, yard, fight, boss, victory), rendered on a thread and
   cross-faded (`scripts/autoload/music.gd`).

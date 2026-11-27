@@ -67,6 +67,7 @@ var slots: Array = []
 var held_label: Label
 var vignette: TextureRect
 var sight: TextureRect
+var daze_fx: ColorRect   # a head that rings sees double and blurred (DAZE_SHADER), over the view and under the rest
 var hurt := 0.0
 var knock := 0.0            # the body plate knocked by a blow
 var last_blood := 100.0
@@ -218,6 +219,22 @@ func _fit() -> void:
 		root.scale = Vector2(k, k)
 		root.size = vs / k
 
+## The view of a ringing head (the more concussion and eye harm, the more): the picture shifted a little and shifted back the other way for a ghost beside it, both blurred, all of it swimming.
+const DAZE_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float amount = 0.0;
+uniform float t = 0.0;
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	vec2 sway = vec2(sin(t * 1.9 + uv.y * 7.0), cos(t * 1.4 + uv.x * 6.0)) * 0.008 * amount;
+	float lod = amount * 1.7;
+	vec3 a = textureLod(screen_tex, uv + sway, lod).rgb;
+	vec3 b = textureLod(screen_tex, uv - sway * 1.7, lod).rgb;
+	COLOR = vec4(mix(a, b, 0.35 * amount), 1.0);
+}
+"""
+
 # ---------- Building ----------
 
 func _build_vignette() -> void:
@@ -258,6 +275,17 @@ func _build_vignette() -> void:
 	sight.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	sight.modulate.a = 0.0
 	root.add_child(sight)
+	daze_fx = ColorRect.new()
+	daze_fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	daze_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dsh := Shader.new()
+	dsh.code = DAZE_SHADER
+	var dsm := ShaderMaterial.new()
+	dsm.shader = dsh
+	daze_fx.material = dsm
+	daze_fx.visible = false
+	root.add_child(daze_fx)
+	root.move_child(daze_fx, 0)
 	# A lost eye: that side of the world goes dark (a glass eye gives most of it back).
 	for side in ["R", "L"]:
 		var bg := Gradient.new()
@@ -1090,7 +1118,13 @@ func _process(dt: float) -> void:
 		var low := clampf((35.0 - f.blood) / 35.0, 0.0, 1.0)
 		var beat := low * (0.35 + 0.25 * maxf(0.0, sin(Time.get_ticks_msec() / 1000.0 * 6.0)))
 		vignette.modulate.a = clampf(maxf(hurt * 0.8, beat) + (0.6 if not f.alive else 0.0), 0.0, 1.0)
-		sight.modulate.a = clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3, 0.0, 0.95)
+		sight.modulate.a = clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3 + f.ringing() * 0.12, 0.0, 0.95)
+		var dz := clampf(f.ringing() * 1.1 + float(f.eye_hurt) * 0.5, 0.0, 1.0)
+		daze_fx.visible = dz > 0.08
+		if daze_fx.visible:
+			var dm := daze_fx.material as ShaderMaterial
+			dm.set_shader_parameter("amount", dz)
+			dm.set_shader_parameter("t", float(Time.get_ticks_msec()) / 1000.0)
 		# The figure's voxels: rebuilt when he loses some, and now and then regardless.
 		columns_t -= dt
 		var columns_was_rebuilt := false
@@ -1137,6 +1171,7 @@ func _process(dt: float) -> void:
 	else:
 		vignette.modulate.a = 0.0
 		sight.modulate.a = 0.0
+		daze_fx.visible = false
 		for s in slots:
 			s.panel.visible = false
 		_set_prompt([])

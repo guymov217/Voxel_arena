@@ -71,11 +71,13 @@ func test_every_giant_reaches_a_man_on_the_sand() -> void:
 ## A giant with a long-hafted weapon fought as a spear (the troll's nail plank) brings it down on
 ## a man on the sand, whatever way the fight goes (three seeds). The rule that sends a spearman
 ## back out past his point kept the giant from striking from where he stood over the man: no blow
-## at all in fourteen seconds in three seeds of ten.
+## at all in fourteen seconds in three seeds of ten. (Twenty-four seconds: the man who is put down
+## again each time he rises rises a little slower with the ringing that falls leave him, and the
+## troll's first blow comes at fourteen to seventeen seconds where it came at fourteen: the same blow, a cycle later.)
 func test_a_giant_with_a_long_haft_strikes_a_man_on_the_sand() -> void:
 	for sd in [1, 2, 9]:
 		seed(sd)
-		var h := await _bout("troll", 16.0, true)
+		var h := await _bout("troll", 24.0, true)
 		t.check(h.weapon >= 1, "seed %d: the giant (%s) strikes the man on the sand (first hit at %.1fs)" % [sd, h.weapon_name, h.first])
 
 ## Every foe stands still (they come in through the gate over time: each step).

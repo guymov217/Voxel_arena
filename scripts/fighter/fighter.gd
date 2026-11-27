@@ -4152,7 +4152,9 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	var heavy := 1.0 - 0.5 * injury
 	# Out of breath he is slower and weaker, not helpless (at a third of his strength he stood
 	# and waited to be killed, user).
-	var stam_f := (0.5 + 0.5 * stamina / 100.0) * (0.6 + 0.4 * heavy)
+	# (The ringing of an injury, over wine's: that is a floor of its own, and slows and weakens nobody.)
+	var ringing_now := maxf(0.0, concussion - float(mods.drunk))
+	var stam_f := (0.5 + 0.5 * stamina / 100.0) * (0.6 + 0.4 * heavy) * ringing_weak(ringing_now)
 	var conc_f := 1.0 - concussion * 0.6
 
 	# Bleeding, recovery.
@@ -4192,7 +4194,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 	daze_t = maxf(0.0, daze_t - dt)
 	eye_hurt = maxf(eye_floor, eye_hurt - dt * 0.01)
 	_tear_strips(dt)
-	concussion = maxf(float(mods.drunk), concussion - dt * (0.05 if state == "stand" else 0.16))
+	concussion = maxf(maxf(float(mods.drunk), brain_floor), concussion - dt * (0.05 if state == "stand" else 0.16))
 	if enraged:
 		concussion = minf(concussion, 0.45)
 	if live and (blood <= 0.0 or head.hp <= 0.0 or head.severed or torso.hp <= 0.0 or _head_ruined()):
@@ -4383,7 +4385,7 @@ func control(dt: float, inp_in: Dictionary) -> void:
 		move_local = move_local.normalized()
 	var sprint: bool = inp.get("sprint", false) and stamina > 5.0 and move_local.z > 0.3
 	var load_pace := 1.0 - clampf((carried_kg() - 6.0) / 100.0, 0.0, 0.3)   # (Armory.burden's pace, by its own line: the call made a dictionary of pace and breath for the one)
-	var speed := (3.8 if sprint else 2.1) * (1.0 - 0.55 * minf(1.0, daze_t / 0.3)) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * load_pace * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
+	var speed := (3.8 if sprint else 2.1) * (1.0 - 0.55 * minf(1.0, daze_t / 0.3)) * (1.0 - CONC_SLOW * ringing_now) * (1.0 + LUNGE_BOOST * lunge_burst) * sqrt(S) * float(mods.speed) * load_pace * (0.3 if one_leg else 0.4 + 0.6 * leg_avg) * blood_f * heavy * (1.0 - crouch * 0.45) / (1.0 + carrying * 0.9 + 0.05 * stuck_load) * (slow_factor if slow_timer > 0.0 else 1.0) * (0.25 if net_timer > 0.0 else 1.0)
 	pace_now = speed / (3.8 if sprint else 2.1)
 	var dir_f = (1.0 + 0.35 * move_local.z if move_local.z < 0.0 else 1.0) * (1.0 - 0.15 * abs(move_local.x))
 	var move_world = yaw_q * move_local * speed * dir_f
@@ -10263,6 +10265,28 @@ func _head_ruined() -> bool:
 
 const BRAIN_DEATH := 0.7   # the share of the brain torn away that kills
 const HEAD_DEATH := 0.35   # the share of the head left that still lives
+## What a hurt head costs him (user: head and brain damage must change how he works). A knock's ringing clears with the seconds; a brain torn or bruised does not: it leaves a floor under the ringing for the rest of
+## the bout (BRAIN_FLOOR at the edge of death, in proportion before it). The ringing, from either, slows him (CONC_SLOW), weakens his arms (CONC_WEAK; ringing_weak), unsteadies him (balance and neck, as before) and
+## makes a bot see a blow late and do less about it (Bot.see_time, Bot.dodge_chance); a player's view swims and closes in (Hud).
+const BRAIN_FLOOR := 0.75
+const CONC_SLOW := 0.3
+const CONC_WEAK := 0.25
+var brain_floor := 0.0   # the ringing that does not clear (_brain_changed)
+
+## The ringing that is an injury, 0..1: the concussion over what wine floors it at (mods.drunk).
+func ringing() -> float:
+	return maxf(0.0, concussion - float(mods.drunk))
+
+## How much of the strength of his arms a ringing head of this size leaves him, 0..1.
+static func ringing_weak(ringing: float) -> float:
+	return 1.0 - CONC_WEAK * ringing
+
+## The brain torn or bruised has changed: the ringing it leaves for good, at least now (a beast's heads are its own, beast.gd).
+func _brain_changed() -> void:
+	if get("kind") == "beast":
+		return
+	brain_floor = minf(1.0, (1.0 - organ_health(Anatomy.BRAIN)) / BRAIN_DEATH) * BRAIN_FLOOR
+	concussion = maxf(concussion, brain_floor)
 
 ## 0..1: how much of the brain is torn away (bruising rings him, it does not kill).
 func brain_lost() -> float:
@@ -10330,6 +10354,7 @@ func _organ_lost(part: VoxelPart, indices: Array) -> void:
 	if lost.has(Anatomy.BRAIN):
 		# As much as the share of it torn (by the voxel, a nick of the brain rang him senseless).
 		concussion = minf(1.0, concussion + 2.0 * float(lost[Anatomy.BRAIN]) / maxf(1.0, float(organ_total.get(Anatomy.BRAIN, 1))))
+		_brain_changed()
 	if lost.has(Anatomy.SPINE):
 		_read_cord()
 
@@ -10380,6 +10405,7 @@ func blast_shock(part: VoxelPart, J: float) -> void:
 				torso.bleed += kk * 2.0
 			Anatomy.BRAIN:
 				concussion = minf(1.0, concussion + kk)
+				_brain_changed()
 	if seen.has(Anatomy.LUNG_R) or seen.has(Anatomy.LUNG_L):
 		stamina = minf(stamina, breath_cap())
 
@@ -10415,6 +10441,7 @@ func _bruise_organs(part: VoxelPart, lp: Vector3, ld: Vector3, J: float) -> void
 			torso.bleed += k * 3.0
 		Anatomy.BRAIN:
 			concussion = minf(1.0, concussion + k * 0.5)
+			_brain_changed()
 
 ## The belly opened wide enough to let the guts out: they come out through the wound as a chain
 ## of their own voxels, hanging and swinging (GutRope; with gore reduced they are only lost). It
@@ -10799,7 +10826,7 @@ func bind_wounds() -> void:
 	blood = 100.0
 	stamina = 100.0
 	stagger = 0.0
-	concussion = 0.0
+	concussion = brain_floor   # (a torn brain stays torn)
 	pain = 0.0
 	daze_t = 0.0
 	limp = false
