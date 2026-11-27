@@ -5832,7 +5832,7 @@ static func _body_color(p: VoxelPart) -> Color:
 ## since none of them is ever put in another's place), and the step's scalars for it.
 var _arm_refs: Array = []
 var _arm_kept := false   # the arm just driven was kept out of his body as well, in the same call of the core (control asks before it does that itself)
-var _arm_f := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_free and arm_armed (_arm_fill; a blade's own 46 to 59)
+var _arm_f := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_free and arm_armed (_arm_fill; a blade's own 46 to 59)
 var _arm_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_plain, arm_elbow and arm_blade, in the order they read them
 ## The step's scalars for VoxelCore.arm_free and arm_armed, in the order they read them (extension/src/arm_drive.cpp), and the fields they keep.
 func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, dt: float, on_f: bool, rec_f: Array, b_f: Array, keep_dt: float) -> void:
@@ -5887,6 +5887,18 @@ func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore:
 	_arm_f[44] = jab_twist_was
 	_arm_f[45] = float(w.reach) if w else 0.0
 	_arm_f[55] = 1.0 if elbow_low_on else 0.0
+	# (A thrust along the blade's line: how the player's mouse drives it in depth, and the crosshair its line is laid on. Read only for such a step.)
+	if _arm_f[27] > 0.5:
+		_arm_f[67] = 1.0 if inp.get("depthOn", false) else 0.0
+		_arm_f[68] = float(inp.get("depth", 0.0))
+		var aim_at = inp.get("aimAt")
+		if aim_at is Vector3:
+			_arm_f[69] = 1.0
+			_arm_f[70] = aim_at.x
+			_arm_f[71] = aim_at.y
+			_arm_f[72] = aim_at.z
+		else:
+			_arm_f[69] = 0.0
 	# (The arm kept out of his body after its drive, in the same call: what _keep_hand_front and _keep_elbow_low ask of him before they push.)
 	_arm_f[64] = keep_dt
 	if keep_dt >= 0.0:
@@ -5899,10 +5911,10 @@ func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore:
 		_arm_f[65] = 1.0 if upper.joint != null else 0.0
 		_arm_f[66] = 1.0 if fore.joint != null else 0.0
 
-## A blade's arm in a plain step (one hand on it, its joint whole and the fist firm, no throw, no thrust along the blade's line, nothing reached for), whole,
+## A blade's arm in a plain step (one hand on it, its joint whole and the fist firm, no throw, nothing reached for; a thrust along the blade's line is one), whole,
 ## in one call of the C++ core (VoxelCore.arm_armed: the hand's mark, the turn the weapon is asked, the elbow, the swing read and the elbow set for it, the
 ## drive from the forearm on), to the bit what _drive_arm's own lines do for such a step; what is left here is the little that is a field of his own
-## (low_hand, the off hand's place, the haft's memory) and _free_wedged. False, having changed nothing, where the step is not a plain one: _drive_arm's own
+## (low_hand, a thrust's lean, the off hand's place, the haft's memory) and _free_wedged. False, having changed nothing, where the step is not a plain one: _drive_arm's own
 ## lines go on then. (What _drive_arm has seen to before it asks is where it asks; tests/test_native.gd holds the two ways to the same bits.)
 func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, e_was, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, t_pos: Vector3, t_rot: Quaternion, yaw_q: Quaternion, dt: float, keep_dt := -1.0) -> bool:
 	var wj = weapon_joints[side]
@@ -5947,6 +5959,8 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 		return false
 	_arm_kept = keep_dt >= 0.0
 	low_hand = maxf(low_hand, res[1])
+	if float(res[2]) >= 0.0:   # (a thrust along the blade's line: the body leans into a level stab)
+		thrust_lean = maxf(thrust_lean, res[2])
 	if side == two_side:
 		if two_gap != null:
 			two_front = (res[0] as Vector3) + (two_gap as Vector3)

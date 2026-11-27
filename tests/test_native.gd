@@ -356,6 +356,12 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 37
+	var rng2 := RandomNumberGenerator.new()   # (the thrusts' own draws: the others' are what they were)
+	rng2.seed = 41
+	var lines := 0
+	var driven_in := 0
+	var by_depth := 0
+	var laid := 0
 	var bad := []
 	var driven := 0
 	var homes := 0
@@ -367,7 +373,7 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	var kept := 0
 	var reaches := {}
 	for lo in [{"main": "gladius", "off": "scutum", "armor": ["helmet", "lorica", "manica", "greaves"]}, {"main": "gladius", "off": ""}, {"main": "mace", "off": "scutum"},
-			{"main": "spear", "off": ""}, {"main": "dagger", "off": "scutum"}, {"main": "bow", "off": ""}]:
+			{"main": "spear", "off": ""}, {"main": "dagger", "off": "scutum"}, {"main": "bow", "off": ""}, {"main": "spear", "off": "scutum"}]:
 		var m := Match.new()
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": lo})
@@ -400,6 +406,23 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				inp.main = held_mark.duplicate()
 			else:
 				held_mark = null
+			# (A thrust along the blade's line held for a spell, VoxelCore.arm_armed's as the script's: a stab of the key, laid on the crosshair while it is
+			# drawn back; the player's mouse driving it in depth, the line turned to the crosshair while it is not yet driven; and with no crosshair at all.)
+			var stab := k % 300 >= 200 and k % 300 < 290
+			if stab:
+				inp.thrust = [0.6, 1.0, 0.8][k % 3]
+				var ph := (k % 300 - 200) / 30
+				var mark: Vector3 = f.torso.global_position + Quaternion(Vector3.UP, f.yaw) * Vector3(rng2.randf_range(-1.0, 1.0), rng2.randf_range(-0.6, 0.9), rng2.randf_range(0.4, 3.0))
+				if ph == 1:
+					inp["depthOn"] = true
+					inp["depth"] = 0.0 if k % 8 < 3 else rng2.randf_range(-1.2, 1.2)
+				if ph != 2 and k % 6 != 1:
+					inp["aimAt"] = mark
+				# (Held level and still by turns: what a couched spear learns of its line then, it does not learn in a thrust.)
+				if k % 4 == 1:
+					inp.main = {"x": rng2.randf_range(-0.2, 0.2), "y": rng2.randf_range(-0.15, 0.2)}
+					for i in speeds.size():
+						speeds[i] = Vector3.ZERO
 			if k % 11 == 0:
 				inp.off["tuck"] = 0.7
 			if k % 13 == 0:
@@ -417,8 +440,8 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 			f.concussion = 0.5 if k % 4 == 1 else 0.0
 			f.daze_t = 0.1 if k % 10 == 3 else 0.0
 			# (A man down by turns, his arm at a fallen man's mark; and the trunk turned by the other fist's punch.)
-			f.state = "down" if k % 6 == 5 and not still else "stand"
-			if k % 12 == 11 and not still:
+			f.state = "down" if k % 6 == 5 and not still and not stab else "stand"
+			if k % 12 == 11 and not still and not stab:
 				f.state = "rising"
 			# (What the arm's keeping out of his body asks of him: staggering, limp, flung, by turns; and an arm at rest far off not kept this step.)
 			f.stagger = 0.5 if k % 14 == 5 else 0.0
@@ -447,7 +470,12 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				(st["behind_t"] as Dictionary)[side] = 1.5   # (a blade long behind him: it is turned back to the front)
 			if k % 10 == 7:
 				(st["swing_hold"] as Dictionary)[side] = 0.2   # (a fast stroke a moment ago: the weapon out at the end of the arm, the elbow set)
+			if stab and k % 14 == 3 and (st["thrust_line"] as Dictionary)[side] is Dictionary:
+				(st["thrust_line"] as Dictionary)[side].t += rng2.randf_range(0.04, 0.3)   # (its clock sent on: to the drive, the hold at the arm's end, past the lunge)
 			var fore_k: VoxelPart = f.arm[side].fore
+			# (A frost thawing on the blade's forearm by turns: such a step is the script's, handed back by the core with nothing changed.)
+			var frost := k % 17 == 5 and side == f.two_side
+			fore_k.frozen_until = VoxelPart.clock() + 1.0 if frost else 0.0
 			var set0 = (fore_k.get_meta("elbow_set") if fore_k.has_meta("elbow_set") else null)
 			var hinge := fore_k.joint as Generic6DOFJoint3D
 			var lim0 := [hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT), hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT)]
@@ -456,7 +484,7 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				_arm_restore(f, st)
 				_arm_set_speeds(bodies, speeds)
 				var e_was = f.elbow_prev[side]
-				if f._drive_blade_plain(side, inp, f.weapons[side], f.arm[side].upper, fore_k, e_was, f.arm_func(side), f.arm_func(side), power, 0.9, 0.95, t_pos, t_rot, yaw_q, dt):
+				if f._drive_blade_plain(side, inp, f.weapons[side], f.arm[side].upper, fore_k, e_was, f.arm_func(side), -1.0 if frost else f.arm_func(side), power, 0.9, 0.95, t_pos, t_rot, yaw_q, dt):
 					plain += 1
 					reaches[snappedf(float(f.weapons[side].reach), 0.01)] = true
 			var res := []
@@ -489,6 +517,7 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				res.append([_arm_live(bodies), _arm_state(f), [(fore_k.get_meta("elbow_set") if fore_k.has_meta("elbow_set") else null),
 					hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT), hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT)]])
 			Greedy.arm_drive_ok = true
+			fore_k.frozen_until = 0.0
 			f._arm_phase = false
 			f.player = true
 			f.is_bot = false
@@ -512,6 +541,15 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				var turned: float = ((q_was as Quaternion) * Vector3.UP).angle_to((q_now as Quaternion) * Vector3.UP)
 				if turned > 0.0007 and turned < 0.004:
 					stills += 1
+			var tl_now = (res[1][1]["thrust_line"] as Dictionary)[side]
+			if tl_now is Dictionary and side == f.two_side:
+				lines += 1
+				if float(tl_now.t) > Fighter.THRUST_DRAW + Fighter.THRUST_DRIVE:
+					driven_in += 1
+				if inp.get("depthOn", false):
+					by_depth += 1
+				if inp.get("aimAt") is Vector3:
+					laid += 1
 			if res[1][0] != speeds:
 				driven += 1
 			if side == f.two_side:
@@ -522,10 +560,11 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 		m.queue_free()
 		await get_tree().physics_frame
 	t.check(bad.is_empty(), "the core's arm drive leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), ", ".join(PackedStringArray(bad.slice(0, 6)))])
-	t.check(driven > 3000 and homes > 120 and blades == 1800 and downs > 150, "and it was the drive at work: %d of 3600 steps pushed a body, %d with a fist on its way home, %d a blade's arm, %d of a man down" % [driven, homes, blades, downs])
-	t.check(plain > 900 and plain < 1500 and sets > 300 and reaches.size() >= 4, "the blade's steps the core takes as plain ones and those it hands back to the script both: %d of 1500 its own (the bow's none), %d steps left an elbow set, blades of %s m" % [plain, sets, reaches.keys()])
+	t.check(driven > 3500 and homes > 120 and blades == 2100 and downs > 100, "and it was the drive at work: %d of 4200 steps pushed a body, %d with a fist on its way home, %d a blade's arm, %d of a man down" % [driven, homes, blades, downs])
+	t.check(plain > 1100 and plain < 1800 and sets > 300 and reaches.size() >= 4, "the blade's steps the core takes as plain ones and those it hands back to the script both: %d of 1800 its own (the bow's none), %d steps left an elbow set, blades of %s m" % [plain, sets, reaches.keys()])
 	t.check(stills > 60, "a blade all but still among them: %d steps turned its line between 0.0007 and 0.004 of a radian" % stills)
-	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 3600 steps" % kept)
+	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 4200 steps" % kept)
+	t.check(lines > 200 and driven_in > 40 and by_depth > 40 and laid > 80, "a thrust along the blade's line among them: %d steps with a line, %d of them past the drive, %d driven in depth by the mouse, %d with a crosshair to lay it on" % [lines, driven_in, by_depth, laid])
 
 ## What is asked of every body in one go, in the C++ core (VoxelCore.pack_parts, record_vel; docs/PERF_RESEARCH.md, section 20): a snapshot's rows of the bodies' places are to the
 ## byte what Match.pack_xf writes (the bodies of a fight, and places and turns made up: far off, scaled, mirrored, turned right round), and the velocities the combat keeps of

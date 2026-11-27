@@ -228,7 +228,7 @@ double VoxelCore::arm_plain(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *
 
 // The blade's arm from its forearm on (Fighter._drive_arm's weapon branch after the elbow is set: _drive_forearm, _lock_elbow, _unjam_blade,
 // _keep_blade_front, the swing's cap, _drive_wrist, then the hand's pull and _keep_weapon_out), for the plain case the script asks it for: one hand
-// on the weapon, no thrust line, the fist firm on it, no throw. (_free_wedged, which gives no push, stays the script's.) `k` as arm_plain's, and:
+// on the weapon, no thrust line, the fist firm on it, no throw; and with a thrust's line where VoxelCore.arm_armed asks it (k 33 to 39). (_free_wedged, which gives no push, stays the script's.) `k` as arm_plain's, and:
 // 26 lf (FORE_LEN * S), 27 the weapon's reach, 28 welded (1/0), 29 its holder is this man (1/0), 30 the trunk severed (1/0), 31 the head (1/0),
 // 32 behind_t as it stands. behind_t[side] and arm_strain[side] are written as the script writes them.
 void VoxelCore::arm_blade(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *w, const Quaternion &fore_q, const Quaternion &aim_fore_q, const Quaternion &w_aim, const Quaternion &aim_q, const Quaternion &grip_q, const Vector3 &aim_w, const Vector3 &hand_goal, const Vector3 &hand_w, const Vector3 &hand_vel, const Vector3 &target_vel, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, Dictionary behind_t, Dictionary arm_strain, const String &side, const PackedFloat64Array &k) const {
@@ -244,18 +244,21 @@ void VoxelCore::arm_blade(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *to
 	const bool welded = kk[28] != 0.0, holder_self = kk[29] != 0.0, torso_severed = kk[30] != 0.0, head_severed = kk[31] != 0.0;
 	const double w_mass = w->get_mass();
 	const Variant side_key = side;
+	// (A thrust along the blade's line, VoxelCore.arm_armed's alone: k 33 on, the line's start at 34 to 36 and its way at 37 to 39, in the body's frame.)
+	const bool line = k.size() >= 40 && kk[33] != 0.0;
 
 	// --- Fighter._drive_forearm ---
 	{
 		const Quaternion rot = pd_quat_of(fore);
 		Vector3 err = rot_error(fore_q, rot);
-		{
+		if (!line) {
 			const double moving = gd_maxf((double)aim_w.length(), gd_maxf((double)fore->get_angular_velocity().length(), (double)w->get_angular_velocity().length()));
 			const double low = ad_smoothstep(0.1, -0.3, (double)aim_q.xform(Vector3(0, 1, 0)).y);
 			const Vector3 line = dir_error(rot.xform(Vector3(0, -1, 0)), fore_q.xform(Vector3(0, -1, 0)));
 			err = err.lerp(line, (real_t)((1.0 - ad_smoothstep(1.0, 4.0, moving)) * low));
 		}
-		const double hold = 1.0;
+		// In a thrust the wrist and forearm lock the blade on its line.
+		const double hold = line ? 1.8 : 1.0;
 		const double wn = 16.0 * hold;
 		const Vector3 alpha = clamp_len(err * (real_t)(wn * wn) - (fore->get_angular_velocity() - aim_w) * (real_t)(2.0 * 0.8 * wn), 920.0 * hold * hold * (0.6 + 0.4 * strength) * mods_strength);
 		const Vector3 com_w = w->get_global_transform().xform(w->get_center_of_mass());
@@ -350,7 +353,32 @@ void VoxelCore::arm_blade(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *to
 			}
 		}
 	}
-	// --- the swing's cap (Fighter.swing_cap) ---
+	// --- Fighter._hold_thrust_line: the hand's drift off the line and the blade's turn off it braked ---
+	if (line && welded) {
+		const Vector3 lo((real_t)kk[34], (real_t)kk[35], (real_t)kk[36]), ld((real_t)kk[37], (real_t)kk[38], (real_t)kk[39]);
+		const Vector3 d = yaw_q.xform(ld);
+		const double wn = 40.0;
+		Vector3 off = t_pos + yaw_q.xform(lo) - hand_w;
+		off -= d * (real_t)(double)off.dot(d);
+		Vector3 v = ad_velocity_at(fore, hand_w) - torso->get_linear_velocity();
+		v -= d * (real_t)(double)v.dot(d);
+		const double m = fo_nominal + w_mass;
+		const Vector3 r_h = hand_w - fore->get_global_position();
+		const double m_pt = 1.0 / (1.0 / gd_maxf(0.05, (double)fore->get_mass()) + (double)r_h.length_squared() / ad_inertia_of(fore));
+		const double damp = gd_minf(2.0 * wn * m, 1.2 * m_pt / dt);
+		const Vector3 J = clamp_len((off * (real_t)wn * (real_t)wn * (real_t)m - v * (real_t)damp) * (real_t)dt, 1200.0 * gd_maxf(0.3, strength) * MS * dt);
+		fore->apply_impulse(J, hand_w - fore->get_global_position());
+		torso->apply_central_impulse(-J * (real_t)0.5);
+		const Vector3 ax = pd_quat_of(w).xform(Vector3(0, 1, 0));
+		Vector3 wv = w->get_angular_velocity() - torso->get_angular_velocity();
+		wv -= ax * (real_t)(double)wv.dot(ax);
+		const Vector3 lever = w->get_global_transform().xform(w->get_center_of_mass()) - hand_w;
+		const double i_asm = ad_inertia_of(fore) + ad_inertia_of(w) + w_mass * (double)lever.length_squared();
+		const Vector3 tq = clamp_len((ax.cross(d) * (real_t)wn * (real_t)wn - wv * (real_t)2.0 * (real_t)wn) * (real_t)i_asm, 260.0 * gd_maxf(0.3, strength) * MS * S);
+		w->apply_torque_impulse(tq * (real_t)dt);
+		torso->apply_torque_impulse(-tq * (real_t)dt * (real_t)0.5);
+	}
+	// --- the swing's cap (Fighter.swing_cap; a thrust's is 45) ---
 	{
 		const Vector3 lever = w->get_global_transform().xform(w->get_center_of_mass()) - hand_w;
 		const double i_wpn = ad_inertia_of(w) + w_mass * (double)lever.length_squared();
@@ -358,6 +386,9 @@ void VoxelCore::arm_blade(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *to
 		double cap = ad_clampf(38.0 * kq, 16.0, 38.0);
 		if (reach > 1.55 * S) {
 			cap = gd_minf(cap, 12.0 * S * std::sqrt(mods_strength) / reach);
+		}
+		if (line) {
+			cap = 45.0;
 		}
 		const double wl = w->get_angular_velocity().length();
 		if (wl > cap) {
@@ -395,7 +426,8 @@ void VoxelCore::arm_blade(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *to
 	// --- the hand's pull to its mark (the tail of _drive_arm) ---
 	Vector3 F;
 	{
-		const double kp = 300.0 * (0.5 + 0.5 * hnd) * 1.0;
+		// (A thrust is driven hard: the hand is held tight to its line and its mark along it.)
+		const double kp = 300.0 * (0.5 + 0.5 * hnd) * (line ? 2.5 : 1.0);
 		const double kd = 2.1 * std::sqrt(kp) * (power ? 1.1 : 1.0);
 		const Vector3 fore_pos = fore->get_global_position();
 		const Vector3 r_h = hand_w - fore_pos;
@@ -407,7 +439,7 @@ void VoxelCore::arm_blade(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *to
 		if (fist_home > 0.0) {
 			F *= (real_t)0.35;
 		}
-		F = clamp_len(F, 1150.0 * 1.0 * strength * MS * mods_strength * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * 1.0 * (1.0 + 0.08 * gd_minf(8.0, w_mass)));
+		F = clamp_len(F, 1150.0 * (line ? 1.5 : 1.0) * strength * MS * mods_strength * (0.55 + 0.45 * hnd) * (1.0 + 0.35 * (1.0 - hnd)) * 1.0 * (1.0 + 0.08 * gd_minf(8.0, w_mass)));
 		F.y = (real_t)gd_maxf((double)F.y, -0.35 * body_mass * gravity);
 		F.y = (real_t)gd_minf((double)F.y, (fo_nominal + up_nominal * 0.5) * gravity + 0.45 * body_mass * gravity * mods_strength);
 		fore->apply_impulse(F * (real_t)dt, hand_w - fore_pos);
@@ -544,13 +576,60 @@ Vector3 VoxelCore::arm_elbow(RigidBody3D *upper, RigidBody3D *torso, const Vecto
 // thrust asked of this hand, 28 stamina, 29 concussion, 30 player (1/0), 31 time, 32 slot, 33 a punch asked of this hand (1/0), 34 charging, 35 the
 // weapon's inertia (its stats'), 36 its joint is there (1/0), 37 arm_reach, 38 fixed_hand (1/0), 39 the forearm's pro_level, 40 the trunk severed
 // (1/0), 41 the head (1/0), 42 on his feet (state "stand"; 1/0), 43 he fights from the ground (Fighter.fights_down; 1/0), 44 jab_twist_was,
-// 45 the weapon's reach (a blade's).
+// 45 the weapon's reach (a blade's). For a thrust along the blade's line (27 over a half; VoxelCore.arm_armed's alone): 67 the player's mouse drives it in
+// depth (1/0), 68 how deep, 69 a crosshair to lay the line on is given (1/0), 70 to 72 where it is.
 struct godot::ArmMark {
 	Vector3 target_w, hand_w, hand_vel, target_vel, shoulder_w, dir;
 	double m_eff = 0, hnd = 0, strength = 0, thrust = 0, fist_home = 0;
+	// A thrust along the blade's line this step: the line (in the body's frame, as thrust_line keeps it) and what the script raises thrust_lean to.
+	bool line = false;
+	Vector3 line_o, line_dir;
+	double lean = -1.0;
 };
 
-bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, bool blade, const Dictionary &hp_in, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_fo, const Array &refs, const String &side, const double *kk, ArmMark &out) const {
+// The names a thrust's line is kept under (Fighter.thrust_line: o, dir, t, o_w, dir_w, and the front hand's f, f_w) and its aim's (thrust_aim: dir, k). Made at
+// the first call and never unmade: at the library's end the engine's strings are gone before a static's destructor would run.
+namespace {
+struct LineKeys {
+	Variant o, dir, t, o_w, dir_w, f, f_w, k;
+	LineKeys() :
+			o(String("o")), dir(String("dir")), t(String("t")), o_w(String("o_w")), dir_w(String("dir_w")), f(String("f")), f_w(String("f_w")), k(String("k")) {}
+};
+const LineKeys &line_keys() {
+	static const LineKeys *keys = new LineKeys();
+	return *keys;
+}
+} // namespace
+
+// Fighter._thrust_ext: how far along a thrust's line (`d`, from `o_l`, in the body's frame) the hand is now, `t` seconds into it (or as deep as the player's mouse
+// has pushed it, `depth`): drawn back along it, then driven out past the end of the arm reached from the shoulder `sh`.
+static double ad_thrust_ext(const Vector3 &d, double t, const Vector3 &o_l, const Vector3 &sh, double chest_z, bool depth_on, double depth, double arm_reach, double S) {
+	const Vector3 o = o_l - sh;
+	const double reach = arm_reach * 0.98;
+	const double bq = o.dot(d);
+	const double disc = bq * bq - ((double)o.length_squared() - reach * reach);
+	double e_hi = 0.45 * S;
+	double e_lo = -0.2 * S;
+	if (disc > 0.0) {
+		const double rt = std::sqrt(disc);
+		e_hi = ad_clampf(-bq + rt, 0.0, 0.6 * S);
+		e_lo = gd_maxf(-bq - rt, e_hi - 0.5 * S);
+	}
+	e_lo = gd_minf(e_lo, e_hi - 0.4 * S);
+	e_lo = gd_minf(0.0, gd_maxf(e_lo, (0.12 * S - gd_minf((double)o_l.z, chest_z)) / gd_maxf((double)d.z, 0.2)));
+	e_lo = gd_maxf(e_lo, -0.2 * S); // THRUST_CHAMBER
+	e_hi += 0.3 * S; // THRUST_OVER
+	if (depth_on) {
+		return depth >= 0.0 ? e_hi * depth : -e_lo * depth;
+	}
+	if (t < 0.12) { // THRUST_DRAW
+		return e_lo * ad_smoothstep(0.0, 1.0, t / 0.12);
+	}
+	const double k = gd_minf(1.0, (t - 0.12) / 0.14); // THRUST_DRIVE
+	return e_lo + (e_hi - e_lo) * (1.0 - (1.0 - k) * (1.0 - k));
+}
+
+bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, bool blade, RigidBody3D *w, bool line_ok, const Dictionary &hp_in, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_fo, const Array &refs, const String &side, const double *kk, ArmMark &out) const {
 	static const Variant k_x = String("x"), k_y = String("y"), k_tuck = String("tuck"), k_R = String("R"), k_L = String("L");
 	static const StringName m_elbow_set("elbow_set"), m_elbow_locked("elbow_locked");
 	const double S = kk[0], af = kk[2], af_now = kk[3], stam_f = kk[4], blood_f = kk[5], dt = kk[6], mods_strength = kk[9];
@@ -594,8 +673,11 @@ bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D
 			}
 		}
 	}
-	if (blade && th_in > 0.5 && !is_down) {
-		return false; // a thrust along the blade's line
+	// A thrust along the blade's line (Fighter._drive_arm's `line_on`: the button, a blade, on his feet or fighting from the ground): the core's where it is handed
+	// what the line needs (the weapon, and k 67 to 72), the script's else.
+	const bool line_on = blade && th_in > 0.5 && !is_down;
+	if (line_on && (w == nullptr || !line_ok)) {
+		return false;
 	}
 	// (A blade's arm sets its elbow itself; any other lets a set elbow go: the script's, once.)
 	if ((!blade && fore->has_meta(m_elbow_set)) || (bool)fore->get_meta(m_elbow_locked, false)) {
@@ -644,6 +726,7 @@ bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D
 	const double fist_home = has_w ? 0.0 : gd_maxf(0.0, (double)d_fist_home[side_key] - dt);
 	d_fist_home[side_key] = fist_home;
 	const double thrust = th_in;
+	const double thr_used = line_on ? 0.0 : thrust; // (a thrust along the line: the hand's mark is where it was, not pushed out ahead)
 	d_throwing[side_key] = false;
 	d_thrust_amt[side_key] = is_down ? 0.0 : ad_clampf(thrust, 0.0, 1.5);
 	d_throw_pose[side_key] = false;
@@ -663,7 +746,7 @@ bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D
 	}
 	d_hand_input[side_key] = hp;
 	// A swung weapon goes out to the end of the arm: out at once as the swing starts, back in after it no faster than a stroke is read.
-	const bool reach_on = blade && std::fabs(thrust) < 0.05 && (power || (double)d_swing_hold[side_key] > 0.0);
+	const bool reach_on = blade && std::fabs(thr_used) < 0.05 && (power || (double)d_swing_hold[side_key] > 0.0);
 	const double swing_reach = ad_move_toward((double)d_swing_reach[side_key], reach_on ? 1.0 : 0.0, (reach_on ? 12.0 : 2.5) * dt);
 	d_swing_reach[side_key] = swing_reach;
 	// Fighter.hand_target_local
@@ -678,12 +761,12 @@ bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D
 		const double low = fist == 0.0 ? ad_clampf((-hy - 0.5) / 0.9, 0.0, 1.0) : 0.0;
 		const double shortk = blade ? ad_clampf((0.95 - reach) / 0.5, 0.0, 1.0) : 0.0;
 		y -= 0.3 * low * shortk * S;
-		const double z = (0.40 + fist + thrust * 0.4 + 0.1 * gd_minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * shortk - 0.32 * ad_clampf((double)hp.get(k_tuck, 0.0), 0.0, 1.0)) * S;
+		const double z = (0.40 + fist + thr_used * 0.4 + 0.1 * gd_minf(1.0, cross / 1.5) + 0.3 * low + 0.08 * low * shortk - 0.32 * ad_clampf((double)hp.get(k_tuck, 0.0), 0.0, 1.0)) * S;
 		Vector3 d = Vector3((real_t)(x + (left ? -0.1 : 0.1) * S), (real_t)y, (real_t)z);
-		if (thrust > -0.5) {
+		if (thr_used > -0.5) {
 			d.z = (real_t)gd_maxf((double)d.z, 0.12 * S);
 		}
-		if (blade && std::fabs(thrust) < 0.05 && swing_reach > 0.0 && (double)d.length() > 1e-4) {
+		if (blade && std::fabs(thr_used) < 0.05 && swing_reach > 0.0 && (double)d.length() > 1e-4) {
 			const double dl = d.length();
 			d = eng_normalized(d) * (real_t)(dl + (gd_maxf(dl, kk[37] * 0.92) - dl) * swing_reach);
 		}
@@ -718,7 +801,84 @@ bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D
 	}
 	d_thrust_aim[side_key] = Variant();
 	d_thrust_ext[side_key] = 0.0;
-	d_thrust_line[side_key] = Variant();
+	if (!line_on) {
+		d_thrust_line[side_key] = Variant();
+	} else {
+		// A thrust is a straight stab along the blade, wherever it points: the line the blade is on when the button goes down is kept where it lies (in the arena),
+		// the hand drawn back along it a little and then driven out along it to the end of the arm.
+		const LineKeys &LK = line_keys();
+		const Variant &k_o = LK.o, &k_dir = LK.dir, &k_t = LK.t, &k_o_w = LK.o_w, &k_dir_w = LK.dir_w, &k_f = LK.f, &k_f_w = LK.f_w, &k_k = LK.k;
+		const Quaternion yaw_inv = yaw_q.inverse();
+		Dictionary tl;
+		const Variant tl_v = d_thrust_line[side_key];
+		if (tl_v.get_type() == Variant::NIL) {
+			// The line the blade really lies on, and the hand where it really is.
+			Vector3 d0 = yaw_inv.xform(pd_quat_of(w).xform(Vector3(0, 1, 0)));
+			d0.z = (real_t)gd_maxf((double)d0.z, 0.2);
+			d0 = eng_normalized(d0);
+			tl[k_o] = yaw_inv.xform(hand_w - t_pos);
+			tl[k_dir] = d0;
+			tl[k_t] = 0.0;
+			tl[k_o_w] = hand_w;
+			tl[k_dir_w] = yaw_q.xform(d0);
+			d_thrust_line[side_key] = tl;
+		} else {
+			tl = tl_v;
+		}
+		// Fighter._line_in_body
+		if (!((double)tl[k_t] >= 0.12 + 0.3)) { // THRUST_DRAW + LUNGE_TIME
+			if (tl.has(k_o_w)) {
+				tl[k_o] = yaw_inv.xform((Vector3)tl[k_o_w] - t_pos);
+				tl[k_dir] = yaw_inv.xform((Vector3)tl[k_dir_w]);
+			}
+			if (tl.has(k_f_w)) {
+				tl[k_f] = yaw_inv.xform((Vector3)tl[k_f_w] - t_pos);
+			}
+		}
+		tl[k_t] = (double)tl[k_t] + dt;
+		// The line turned to the crosshair: while the thrust is switched on and the blade not yet driven in (the player's mouse driving it in depth), or
+		// while a stab of the thrust key is drawn back.
+		const bool depth_on = kk[67] != 0.0, aim_given = kk[69] != 0.0;
+		const double depth_in = kk[68];
+		double mark_k = -1.0;
+		if (depth_on && aim_given && std::fabs(depth_in) < 0.05) {
+			mark_k = dt;
+		} else if (!depth_on && aim_given && (double)tl[k_t] < 0.12) {
+			mark_k = 1.0;
+		}
+		if (mark_k >= 0.0) {
+			// Fighter._line_to_mark
+			const Vector3 aim_at((real_t)kk[70], (real_t)kk[71], (real_t)kk[72]);
+			Vector3 want = yaw_inv.xform(aim_at - t_pos) - (Vector3)tl[k_o];
+			if (!((double)want.length_squared() < 0.04)) {
+				want = eng_normalized(want);
+				want.z = (real_t)gd_maxf((double)want.z, 0.2);
+				want = eng_normalized(want);
+				const Vector3 d = eng_normalized(((Vector3)tl[k_dir]).slerp(want, (real_t)gd_minf(1.0, mark_k * 12.0)));
+				tl[k_dir] = d;
+				tl[k_dir_w] = yaw_q.xform(d);
+			}
+		}
+		const double dp = ad_clampf(depth_in, -1.0, 1.0);
+		const Vector3 tl_o = tl[k_o], tl_dir = tl[k_dir];
+		const double tl_t = tl[k_t];
+		const double ext = ad_thrust_ext(tl_dir, tl_t, tl_o, shoulder_l, INFINITY, depth_on, dp, kk[37], S);
+		d_thrust_ext[side_key] = ext;
+		// The body leans into a level stab; a stab up or down is the arm's.
+		const double drive_k = depth_on ? ad_clampf(dp, 0.0, 1.0) : ad_clampf((tl_t - 0.12) / 0.14, 0.0, 1.0);
+		out.lean = drive_k * ad_clampf(1.0 - 1.5 * std::fabs((double)tl_dir.y), 0.0, 1.0);
+		target_w = t_pos + yaw_q.xform(tl_o + tl_dir * (real_t)ext);
+		// Held on the line against the sag of its own weight: asked as far past it as it hangs off.
+		const Vector3 dw = yaw_q.xform(tl_dir);
+		const Vector3 now = pd_quat_of(w).xform(Vector3(0, 1, 0));
+		Dictionary ta;
+		ta[k_dir] = eng_normalized(dw + (dw - now).limit_length((real_t)0.4));
+		ta[k_k] = 1.0;
+		d_thrust_aim[side_key] = ta;
+		out.line = true;
+		out.line_o = tl_o;
+		out.line_dir = tl_dir;
+	}
 	// The hand moves like an arm: limited speed and acceleration toward its mark.
 	{
 		const Variant lead_v = d_hand_lead[side_key];
@@ -727,9 +887,9 @@ bool VoxelCore::arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D
 			const double h = d_handling[side_key];
 			const double wind = 0.35 + 0.65 * gd_minf(1.0, stamina / 60.0);
 			// (Fighter.long_k: a blade longer than a zweihander is slower to its mark.)
-			const double long_k = (blade && thrust <= 0.3) ? std::pow(gd_minf(1.0, 1.55 * S / gd_maxf(0.1, reach)), 1.5) : 1.0;
-			const double vmax = 15.0 * S * long_k * (thrust > 0.3 ? 2.2 : 1.0) * (0.55 + 0.45 * h) * (0.5 + 0.5 * gd_minf(1.0, af_now / 0.85)) * wind;
-			const double amax = 140.0 * S * (0.4 + 0.6 * h) * (power ? 1.3 : 1.0) * (thrust > 0.3 ? 3.0 : 1.0) * (0.5 + 0.5 * wind);
+			const double long_k = (blade && !line_on && thrust <= 0.3) ? std::pow(gd_minf(1.0, 1.55 * S / gd_maxf(0.1, reach)), 1.5) : 1.0;
+			const double vmax = 15.0 * S * long_k * (line_on ? 3.0 : (thrust > 0.3 ? 2.2 : 1.0)) * (0.55 + 0.45 * h) * (0.5 + 0.5 * gd_minf(1.0, af_now / 0.85)) * wind;
+			const double amax = 140.0 * S * (0.4 + 0.6 * h) * (power ? 1.3 : 1.0) * (line_on ? 6.0 : (thrust > 0.3 ? 3.0 : 1.0)) * (0.5 + 0.5 * wind);
 			const Vector3 to_t = target_w - lead;
 			const double dist = to_t.length();
 			const Vector3 v_des = dist > 1e-5 ? to_t * (real_t)(gd_minf(gd_minf(vmax, std::sqrt(2.0 * amax * dist)), dist / dt) / dist) : Vector3();
@@ -782,7 +942,7 @@ bool VoxelCore::arm_free(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *tor
 		return false;
 	}
 	ArmMark m;
-	if (!arm_mark_core(upper, fore, torso, head, false, hp_in, t_pos, t_rot, yaw_q, shoulder_l, hand_point, torso_half, head_half, sculpt, o_fo, refs, side, kk, m)) {
+	if (!arm_mark_core(upper, fore, torso, head, false, nullptr, false, hp_in, t_pos, t_rot, yaw_q, shoulder_l, hand_point, torso_half, head_half, sculpt, o_fo, refs, side, kk, m)) {
 		return false;
 	}
 	const bool has_w = shield != nullptr;
@@ -866,7 +1026,7 @@ Quaternion ad_arc(const Vector3 &p_v0, const Vector3 &p_v1) {
 	return Quaternion(q.x * rl, q.y * rl, q.z * rl, q.w * rl);
 }
 
-// Fighter.weapon_aim for a blade's plain step (no bow, no throw, no thrust along its line; one hand on it): the turn the weapon is asked to lie at, and
+// Fighter.weapon_aim for a blade's plain step (no bow, no throw; one hand on it; a thrust along its line asks the blade onto it, thrust_aim): the turn the weapon is asked to lie at, and
 // the fields it keeps (aim_q, aim_tw, chop_mem, a bot's stroke_dir and stroke_idle, a spear's spear_true). `low` is what the script raises low_hand to.
 // k as arm_armed's.
 Quaternion ad_weapon_aim(RigidBody3D *w, const Vector3 &hand_w, const Vector3 &target_w, const Vector3 &target_vel, const Quaternion &yaw_q, const Dictionary &hp, const Array &refs, const Variant &side_key, const double *kk, double hnd, double &low) {
@@ -876,7 +1036,7 @@ Quaternion ad_weapon_aim(RigidBody3D *w, const Vector3 &hand_w, const Vector3 &t
 	const double S = kk[0], dt = kk[6];
 	const bool left = kk[10] != 0.0, stand = kk[42] != 0.0, spear = kk[46] != 0.0;
 	const double w_mass = kk[16], reach = kk[45];
-	Dictionary d_aim_q = refs[24], d_aim_tw = refs[26], d_chop = refs[27], d_stroke_dir = refs[28], d_stroke_idle = refs[29], d_spear_true = refs[30];
+	Dictionary d_aim_q = refs[24], d_aim_tw = refs[26], d_chop = refs[27], d_stroke_dir = refs[28], d_stroke_idle = refs[29], d_spear_true = refs[30], d_thrust_aim = refs[13], d_thrust_line = refs[15];
 	const double hy = hp.get(k_y, 0.15);
 	const double hx0 = hp.get(k_x, 0.0);
 	// Fighter.aim_dir
@@ -908,7 +1068,8 @@ Quaternion ad_weapon_aim(RigidBody3D *w, const Vector3 &hand_w, const Vector3 &t
 		double fix = d_spear_true[side_key];
 		const double a_yaw = std::atan2((double)axis.x, (double)axis.z);
 		const double flat = Vector2(axis.x, axis.z).length();
-		if (stand && flat > 0.75 && (double)w->get_angular_velocity().length() < 2.5) {
+		// (Not in a thrust along its line, thrust_line set by the mark this step: Fighter._spear_trued learns only of a spear held couched.)
+		if (((Variant)d_thrust_line[side_key]).get_type() == Variant::NIL && stand && flat > 0.75 && (double)w->get_angular_velocity().length() < 2.5) {
 			const Vector3 now = pd_quat_of(w).xform(Vector3(0, 1, 0));
 			const double e_yaw = ad_wrapf(a_yaw - std::atan2((double)now.x, (double)now.z), -PI, PI);
 			if (std::fabs(e_yaw) < 0.6 && (double)Vector2(now.x, now.z).length() > 0.7) {
@@ -918,6 +1079,15 @@ Quaternion ad_weapon_aim(RigidBody3D *w, const Vector3 &hand_w, const Vector3 &t
 		}
 		const double y2 = a_yaw + fix;
 		axis = Vector3((real_t)(std::sin(y2) * flat), axis.y, (real_t)(std::cos(y2) * flat));
+	}
+	{
+		// A thrust: the blade lies on its line (thrust_aim, set by the mark this step).
+		const Variant ta = d_thrust_aim[side_key];
+		if (ta.get_type() == Variant::DICTIONARY) {
+			const LineKeys &LK = line_keys();
+			const Dictionary tad = ta;
+			axis = eng_normalized(axis.slerp((Vector3)tad[LK.dir], (real_t)(double)tad[LK.k]));
+		}
 	}
 	// Nor the blade: it never points back past the shoulders.
 	{
@@ -1106,7 +1276,7 @@ Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *t
 		return r;
 	}
 	ArmMark m;
-	if (!arm_mark_core(upper, fore, torso, head, true, hp_in, t_pos, t_rot, yaw_q, shoulder_l, hand_point, torso_half, head_half, sculpt, o_fo, refs, side, kk, m)) {
+	if (!arm_mark_core(upper, fore, torso, head, true, w, k.size() >= 73, hp_in, t_pos, t_rot, yaw_q, shoulder_l, hand_point, torso_half, head_half, sculpt, o_fo, refs, side, kk, m)) {
 		return r;
 	}
 	const double S = kk[0], dt = kk[6], lu = kk[23], lf = kk[57];
@@ -1157,7 +1327,7 @@ Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *t
 	ad_hold_elbow(upper, fore, elbow_joint, want_bend, swinging, dt, guard ? 1.5 : 0.2);
 
 	// The hand's goal moved out until the arm, as thick as it is drawn, is out of the trunk as it is drawn.
-	if (drawn) {
+	if (drawn && !m.line) {
 		const Vector3 g2 = hand_off(torso, sculpt, o_up, kk[22] != 0.0, o_fo, kk[26] != 0.0, m.shoulder_w, elbow, hand_goal, lu, lf, want_bend < 0.5, false, S, kk[19], kk[20], kk[21], kk[24]);
 		if (!g2.is_equal_approx(hand_goal)) {
 			hand_goal = g2;
@@ -1165,11 +1335,16 @@ Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *t
 	}
 
 	PackedFloat64Array k_bl;
-	k_bl.resize(33);
+	k_bl.resize(40);
 	{
 		double *q = k_bl.ptrw();
-		for (int i = 0; i < 33; i++) {
+		for (int i = 0; i < 40; i++) {
 			q[i] = 0.0;
+		}
+		if (m.line) {
+			q[33] = 1.0;
+			q[34] = m.line_o.x; q[35] = m.line_o.y; q[36] = m.line_o.z;
+			q[37] = m.line_dir.x; q[38] = m.line_dir.y; q[39] = m.line_dir.z;
 		}
 		q[0] = S; q[1] = kk[1]; q[2] = kk[2]; q[3] = m.strength; q[4] = m.hnd; q[5] = m.m_eff; q[6] = dt; q[7] = kk[7]; q[8] = kk[8]; q[9] = kk[9];
 		q[11] = m.fist_home; q[12] = kk[11]; q[13] = kk[13]; q[17] = kk[17]; q[18] = kk[18]; q[26] = lf; q[27] = kk[45]; q[28] = kk[58]; q[29] = kk[59];
@@ -1177,9 +1352,10 @@ Array VoxelCore::arm_armed(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *t
 	}
 	arm_blade(upper, fore, torso, head, w, fore_q, fore_q, w_aim, w_aim, grip_q, aim_w, hand_goal, m.hand_w, m.hand_vel, m.target_vel, t_pos, t_rot, yaw_q, d_behind_t, refs[22], side, k_bl);
 	arm_keep(upper, fore, torso, head, hand_point, torso_half, head_half, sculpt, o_up, o_fo, up_half, up_pa, up_ca, fo_pa, fo_ca, kk);
-	r.resize(2);
+	r.resize(3);
 	r[0] = hand_goal;
 	r[1] = low;
+	r[2] = m.lean; // (below 0: no thrust along the blade's line this step)
 	return r;
 }
 
@@ -1675,5 +1851,5 @@ PackedFloat64Array VoxelCore::ground_ride(Object *fighter, RigidBody3D *torso, R
 // Which arguments the arms' and the legs' calls take (the script asks before it uses them: a library left over from an older build would be called
 // with the wrong ones).
 int VoxelCore::drive_api() const {
-	return 4;
+	return 5;
 }

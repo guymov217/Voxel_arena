@@ -971,3 +971,25 @@ The fight's second 6 again (section 24), each of `control`'s statements counted,
   sixty times a step), the ids of a blow's pair asked of typed objects: `process_contacts` -3.6%, the step 40.45 -> 40.27.
   **Next: the thrust's line and the two-handed drive in the core** (`_thrust_ext`, `_hold_thrust_line`, `_drive_haft`, the guard hand's place), about 4 of
   the 40 million; then the contacts.
+
+## 26. The thrust along the blade's line, in the core
+
+Section 25's dearest thing, its first part. `VoxelCore.arm_mark_core` sent every blade arm with its thrust over a half back to the script (2.3 arms a step in the
+fight's second 6, each some 600 thousand instructions against the core's 165). The line is the core's now (`arm_armed`, drive API 5):
+
+- **the mark**: the line the blade lies on when the button goes down, kept where it lies in the arena (`thrust_line`: the same record under the same names, read by
+  `control`'s lunge as before), laid on the crosshair while a stab of the key is drawn back or while the player's mouse has not yet driven it in
+  (`_line_to_mark`), how far along it the hand is (`_thrust_ext`: drawn back, driven out past the arm's end, or as deep as the mouse has pushed it), the lean of the
+  body into a level stab handed back to the script (`thrust_lean`), the hand's pace along it (three times a stroke's speed, six times its push);
+- **the aim**: the blade asked onto the line as far past it as it sags off (`thrust_aim`); a couched spear learns nothing of its line while it thrusts
+  (`_spear_trued`: the one place the first build parted from the script, found by the replay's fingerprints, 20 lines of 39, and not by the test of single steps,
+  whose only spear was held in both hands; the test has a spear and shield now, and fails on that build);
+- **the drive**: the forearm and the wrist lock the blade on the line (`_drive_forearm` 1.8 times as stiff, no easing onto the forearm's own line), the hand's drift
+  off the line and the blade's turn off it braked (`_hold_thrust_line`), the swing's cap 45, the hand's pull 2.5 times as hard and half as much again at most; the
+  hand's goal not moved out of the drawn trunk.
+
+Held to the script's lines by `test_native_arm_drive_matches_the_gdscript` (4200 steps to the bit; more than 200 of them with a line: a stab of the key, the mouse
+driving it in depth, with a crosshair and without, the line's clock sent on past the drive and the lunge; a frost thawing on the forearm among the steps handed
+back) and by the fingerprints (0 lines of 39). `_drive_arm` -9.2%, **the fighting step 40.27 -> 39.27 million, -2.5%**; since the fourth report 45.0 -> 39.3, **-12.7%**.
+
+Left of the arms the core does not drive: both hands on a haft (the guard hand's place and the front hand's, `_drive_haft`), an archer's, a shove's, a crawling man's.
