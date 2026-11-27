@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "%d denários para cada um",
  "The room is full": "A sala está cheia",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s chuta (e pisa em quem está no chão), %s empurra. Segure %s para armar o chute e solte para desferi-lo com força: fere e joga o adversário para trás. Chute ou empurre o boneco.",
- "Push kick: let go of %s to drive it home": "Chute de empurrão: solte %s para desferi-lo"
+ "Push kick: let go of %s to drive it home": "Chute de empurrão: solte %s para desferi-lo",
+ "Bout time %s": "Duração da luta %s",
+ "Damage dealt": "Dano causado",
+ "Hardest blow": "Golpe mais forte",
+ "Damage taken": "Dano sofrido",
+ "Crowd favour": "Favor da plateia",
+ "Won from the crowd": "Ganho com a plateia",
+ "Standing": "De pé",
+ "Fallen": "Caído",
+ "Slayer": "Matador",
+ "Wrecker": "Destruidor",
+ "Butcher": "Açougueiro",
+ "Iron hide": "Pele de ferro",
+ "Good friend": "Bom amigo",
+ "The crowd's darling": "O queridinho da plateia",
+ "Top earner": "Maior ganho",
+ "Continue": "Continuar",
+ "MVP": "MVP"
 }

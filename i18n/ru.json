@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "по %d денариев каждому",
  "The room is full": "Комната заполнена",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s — пинок (и топтание лежачего), %s — толчок. Удерживайте %s, чтобы замахнуться ногой, и отпустите, чтобы нанести удар: он ранит и отбрасывает противника. Пните или толкните манекен.",
- "Push kick: let go of %s to drive it home": "Мощный пинок: отпустите %s, чтобы ударить"
+ "Push kick: let go of %s to drive it home": "Мощный пинок: отпустите %s, чтобы ударить",
+ "Bout time %s": "Длительность боя %s",
+ "Damage dealt": "Нанесённый урон",
+ "Hardest blow": "Сильнейший удар",
+ "Damage taken": "Полученный урон",
+ "Crowd favour": "Любовь толпы",
+ "Won from the crowd": "Получено от толпы",
+ "Standing": "На ногах",
+ "Fallen": "Пал",
+ "Slayer": "Убийца",
+ "Wrecker": "Разрушитель",
+ "Butcher": "Мясник",
+ "Iron hide": "Железная шкура",
+ "Good friend": "Верный друг",
+ "The crowd's darling": "Любимец толпы",
+ "Top earner": "Больше всех заработал",
+ "Continue": "Продолжить",
+ "MVP": "MVP"
 }

@@ -328,6 +328,19 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   the run ends. At the end of the ladder the Emperor has one rudis for the party: each says
   whether to share the glory (their names together in the Hall of Fame) or to fight one another
   for it in the players' brawl (the last on his feet takes it).
+- **The bout's report** (`scripts/game/bout_report.gd`, `scripts/ui/report_screen.gd`, `tests/test_bout_report.gd`; user, #346):
+  at the end of every campaign bout, won or lost, alone or in a party, the bout is held on a report in the arena it was
+  fought in until each player goes on (its button, Space or Enter; a headless window, a bot or a test goes on at once).
+  The host counts the party's tallies (`Match._tally_hit`: the damage dealt to a man not of one's side and the damage
+  taken from anyone, the blows that landed and the hardest of them, on top of the kills, the limbs cut and lost and the
+  friends lifted), builds the report at the bout's end (`Match._bout_report`, `BoutReport.build`) and sends it to the
+  guests with the `end` message, made safe on arrival (`BoutReport.clean`). A party sees a table, a column to a man and a
+  row to each measure, the bars filling and counting up, each row's leader in gold, the medals of the awards (Slayer,
+  Wrecker, Hammer, Butcher, Iron hide, Good friend, the crowd's darling, Top earner) and the crown of the most valuable man
+  (`BoutReport.worth`); a man alone sees a tile to each measure. Everyone takes home the same purse, so "who earned the
+  most" is who brought the crowd's part of it in: what the crowd paid for the show is shared out by the favour each earned
+  above its indifference, and the favourite's bonus is his (`BoutReport.split`); what each is paid is not changed by it.
+  `-- --probe reportshots` draws it for one, two, four and eight men.
 - **The campaign's end** (`scripts/ui/ending_scene.gd`, `scripts/game/run_scroll.gd`): the ladder
   ends with the Dragon on bout 64 (bout 63's foe, in the Emperor's gold, is the Emperor's
   Champion: the Emperor himself watches from his box), and the campaign closes in the arena

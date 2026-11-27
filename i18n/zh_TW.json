@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "每人 %d 第納爾",
  "The room is full": "房間已滿",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s 踢（對倒地的人則是踩踏），%s 推。按住 %s 蓄力，放開時全力踢出：能重創對手並把他踢飛。踢或推一下木人。",
- "Push kick: let go of %s to drive it home": "重踢：放開 %s 全力踢出"
+ "Push kick: let go of %s to drive it home": "重踢：放開 %s 全力踢出",
+ "Bout time %s": "戰鬥時長 %s",
+ "Damage dealt": "造成傷害",
+ "Hardest blow": "最重一擊",
+ "Damage taken": "承受傷害",
+ "Crowd favour": "觀眾喜愛度",
+ "Won from the crowd": "從觀眾處賺得",
+ "Standing": "屹立不倒",
+ "Fallen": "倒下",
+ "Slayer": "屠戮者",
+ "Wrecker": "破壞者",
+ "Butcher": "屠夫",
+ "Iron hide": "鐵皮",
+ "Good friend": "好友",
+ "The crowd's darling": "觀眾寵兒",
+ "Top earner": "收入最高",
+ "Continue": "繼續",
+ "MVP": "MVP"
 }

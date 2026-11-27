@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "คนละ %d เดนาริอุส",
  "The room is full": "ห้องเต็มแล้ว",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s เพื่อเตะ (และกระทืบคนที่ล้มอยู่) %s เพื่อผลัก กด %s ค้างไว้เพื่อง้างเท้า แล้วปล่อยเพื่อเตะเต็มแรง: เจ็บหนักและเตะคนให้กระเด็นถอยหลัง ลองเตะหรือผลักหุ่นซ้อม",
- "Push kick: let go of %s to drive it home": "เตะผลักแรง: ปล่อย %s เพื่อเตะเต็มแรง"
+ "Push kick: let go of %s to drive it home": "เตะผลักแรง: ปล่อย %s เพื่อเตะเต็มแรง",
+ "Bout time %s": "ระยะเวลาการต่อสู้ %s",
+ "Damage dealt": "ความเสียหายที่ก่อ",
+ "Hardest blow": "การโจมตีที่หนักที่สุด",
+ "Damage taken": "ความเสียหายที่ได้รับ",
+ "Crowd favour": "ความนิยมจากผู้ชม",
+ "Won from the crowd": "เงินที่ได้จากผู้ชม",
+ "Standing": "ยังยืนอยู่",
+ "Fallen": "ล้มลง",
+ "Slayer": "นักสังหาร",
+ "Wrecker": "ผู้ทำลายล้าง",
+ "Butcher": "คนขายเนื้อ",
+ "Iron hide": "หนังเหล็ก",
+ "Good friend": "เพื่อนที่ดี",
+ "The crowd's darling": "ขวัญใจผู้ชม",
+ "Top earner": "ผู้ทำเงินสูงสุด",
+ "Continue": "ต่อไป",
+ "MVP": "MVP"
 }

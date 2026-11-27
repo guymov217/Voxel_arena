@@ -46,6 +46,7 @@ var tick := 0
 var stage_info: Dictionary = {}
 var players_count := 1
 var round_pay := 0
+var bout_purse := {}   # what the won stage's purse is made of (BoutReport.build: each, base, rounds, crowd, fav, favourite), for the bout's report
 ## A fight of several rounds (Series): where the match stands, as the host tells it (Series.to_dict) and as the HUD reads it.
 var series := {}
 var series_text := ""
@@ -2375,7 +2376,10 @@ func guest_end(data: Dictionary) -> void:
 		if show:
 			await killcam.play(func(): pass)
 	# (Dead on the sand as the bout ended: carried off it, if the party won.)
-	finished.emit({"won": bool(data.get("won", false)), "stage": stage, "pay": int(data.get("pay", 0)), "fell": me != null and is_instance_valid(me.f) and not me.f.alive})
+	var gr := {"won": bool(data.get("won", false)), "stage": stage, "pay": int(data.get("pay", 0)), "fell": me != null and is_instance_valid(me.f) and not me.f.alive}
+	if data.get("report") is Dictionary:
+		gr["report"] = BoutReport.clean(data.report)   # (the host's report of the bout: made safe)
+	finished.emit(gr)
 
 ## The host's messages that name a fighter by his id (kept for one not built yet: guest_spawn).
 const PENDING_TYPES := ["bone", "gutp", "guts", "held", "wloose", "wpick", "breath", "douse", "spot"]
@@ -3140,6 +3144,7 @@ func _check_round(dt: float) -> void:
 			favourite_now = PartyGlory.favourite(party_favour()) if coop else ""
 			var fav := PartyGlory.bonus(base) if favourite_now != "" else 0
 			var pay := base + round_pay + crowd + fav
+			bout_purse = {"each": pay, "base": base, "rounds": round_pay, "crowd": crowd, "fav": fav, "favourite": favourite_now}
 			var purse := ("%d denarii to each of you" if players_count > 1 else "%d denarii") % pay
 			if crowd > 0:
 				purse += Loc.t(", %d of them the crowd's") % crowd
@@ -3173,6 +3178,64 @@ func _tally(f, k: String, n := 1) -> void:
 	var row: Dictionary = party_tally.get(f.display_name, {})
 	row[k] = int(row.get(k, 0)) + n
 	party_tally[f.display_name] = row
+
+## A man of the party's tally of a quantity that is not a count (the damage he dealt and took): `v` more of `k`, kept as it comes (BoutReport.build rounds it).
+func _tally_add(f, k: String, v: float) -> void:
+	if not (coop or mode == "campaign") or role == "guest" or f == null or not is_instance_valid(f):
+		return
+	var e = entity_of(f)
+	if e == null or not (e.kind == "local" or e.kind == "remote"):
+		return
+	var row: Dictionary = party_tally.get(f.display_name, {})
+	row[k] = float(row.get(k, 0.0)) + v
+	party_tally[f.display_name] = row
+
+## The most of a quantity a man of the party reached (his hardest blow).
+func _tally_max(f, k: String, v: float) -> void:
+	if not (coop or mode == "campaign") or role == "guest" or f == null or not is_instance_valid(f):
+		return
+	var e = entity_of(f)
+	if e == null or not (e.kind == "local" or e.kind == "remote"):
+		return
+	var row: Dictionary = party_tally.get(f.display_name, {})
+	row[k] = maxf(float(row.get(k, 0.0)), v)
+	party_tally[f.display_name] = row
+
+## A blow counted for the bout's report: the damage a man of the party took (from anyone, a hazard too), and what a man of it dealt to one not of his side (the damage, the blows
+## that landed, the hardest of them). A blow the shield took did no damage and counts for nothing.
+func _tally_hit(h: Dictionary) -> void:
+	if not (coop or mode == "campaign") or role == "guest" or not (h.get("res") is Dictionary):
+		return
+	var dm := float(h.res.get("dmg", 0.0))
+	var victim = h.get("char")
+	if dm <= 0.0 or victim == null or not is_instance_valid(victim):
+		return
+	_tally_add(victim, "hurt", dm)
+	var by = h.get("attacker")
+	if by == null or by == victim or not is_instance_valid(by):
+		return
+	var ea = entity_of(by)
+	var ev = entity_of(victim)
+	if ea != null and ev != null and ea.team != ev.team:
+		_tally_add(by, "dmg", dm)
+		_tally(by, "hits")
+		_tally_max(by, "big", float(h.get("J", 0.0)))
+
+## The bout's report (BoutReport): every man of the party, what he did, and what the purse was made of.
+func _bout_report(won: bool) -> Dictionary:
+	var order := []
+	var alive := {}
+	var favour := {}
+	for e in humans():
+		if not is_instance_valid(e.f):
+			continue
+		var n: String = e.f.display_name
+		if order.has(n):
+			continue
+		order.append(n)
+		alive[n] = e.f.alive
+		favour[n] = spectacle.get_favor(e.f)
+	return BoutReport.build(order, party_tallies(), alive, favour, bout_purse, time, won)
 
 ## The hardest setting (the trainer's Extreme): the old rules stand there, a player's arm breaks
 ## as any man's does.
@@ -3464,6 +3527,8 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	var result := {"won": won, "stage": stage, "bout": int(stage_info.get("bout", stage)), "coop": coop, "pay": pay, "checkpoint": stage_info.get("checkpoint"), "wear": wear, "kills": kills.duplicate(), "boss": stage_info.get("boss", false)}
 	if (coop or mode == "campaign") and role != "guest":
 		result["party"] = party_tallies()
+	if mode == "campaign" and role != "guest":
+		result["report"] = _bout_report(won)
 	if coop and role != "guest":
 		result["favourite"] = favourite_now if won else ""
 	if modes and modes.last_winner != null and is_instance_valid(modes.last_winner):
@@ -3514,6 +3579,8 @@ func _end(won: bool, text: String, sub: String, pay := 0, _linger := false) -> v
 	if role == "host":
 		# Online one kill is shown, the fight's best of all, on every screen: the host names it.
 		var msg := {"won": won, "text": text, "sub": sub, "pay": pay}
+		if result.has("report"):
+			msg["report"] = result.report
 		if killcam:
 			var ve = _entity_of(killcam.best.get("victim")) if show else null
 			msg["kc_v"] = ve.id if ve != null else -1
@@ -3649,6 +3716,7 @@ func _on_hit(h: Dictionary) -> void:
 		_gems(h)
 		_gold(h)
 		_materials(h)
+	_tally_hit(h)
 	if h.res.get("severed", []).size() > 0:
 		_tally(h.char, "limbs", (h.res.severed as Array).size())
 		if h.attacker:

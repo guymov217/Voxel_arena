@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "각자 %d 데나리우스",
  "The room is full": "방이 가득 찼습니다",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s 키로 발차기(쓰러진 상대는 짓밟기), %s 키로 밀치기. %s 키를 누르고 있으면 발차기를 크게 준비하고, 떼면 힘껏 내지릅니다. 상대에게 상처를 입히고 뒤로 날려 버립니다. 허수아비를 차거나 밀쳐 보세요.",
- "Push kick: let go of %s to drive it home": "밀어차기: %s 키를 떼면 강하게 찹니다"
+ "Push kick: let go of %s to drive it home": "밀어차기: %s 키를 떼면 강하게 찹니다",
+ "Bout time %s": "전투 시간 %s",
+ "Damage dealt": "가한 피해",
+ "Hardest blow": "가장 강한 일격",
+ "Damage taken": "받은 피해",
+ "Crowd favour": "관중의 호감",
+ "Won from the crowd": "관중에게서 얻은 돈",
+ "Standing": "서 있음",
+ "Fallen": "쓰러짐",
+ "Slayer": "학살자",
+ "Wrecker": "파괴자",
+ "Butcher": "도살자",
+ "Iron hide": "강철 피부",
+ "Good friend": "좋은 친구",
+ "The crowd's darling": "관중의 사랑둥이",
+ "Top earner": "최고 수입",
+ "Continue": "계속",
+ "MVP": "MVP"
 }

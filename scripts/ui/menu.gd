@@ -10,6 +10,10 @@ var panel: PanelContainer
 var world_root: Node3D
 var pause_layer: CanvasLayer
 var last_result := {}
+var report_info := {}      # the bout's report on the screen (BoutReport, ReportScreen): {"report": the report, "title": its heading}
+var report_wait := false   # (the finished bout is held on its report until he goes on)
+var report_t0 := 0
+const REPORT_MAX_MS := 180000   # (a report left unread this long goes on by itself)
 var in_room := false
 var over_match := false   # a menu screen opened over a running match (Settings from the pause menu)
 var cmd_bot := false
@@ -20,6 +24,7 @@ var backdrop: Match = null      # bots fighting behind the menus, seen by an orb
 var backdrop_off := false       # (screenshots of the menus' words on a slow renderer: no fight behind them)
 var bg: ColorRect
 var shade: TextureRect
+var report_dim: ColorRect   # (an even dimming of the arena behind the bout's report)
 var panel_style: StyleBoxFlat
 const HERO_POS := Vector3(-1.45, 0, -9.7)
 ## Bread & Circuses is set aside for now (its screens and code stay, ready to come back).
@@ -98,6 +103,12 @@ func _ready() -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shade)
+	report_dim = ColorRect.new()
+	report_dim.color = Color(0.03, 0.02, 0.012, 0.66)
+	report_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	report_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	report_dim.visible = false
+	add_child(report_dim)
 	var vig := TextureRect.new()
 	var vg := Gradient.new()
 	vg.set_color(0, Color(0, 0, 0, 0))
@@ -421,6 +432,7 @@ func show_screen(s: String, msg := "") -> void:
 			_end_match()
 		hub = false
 	screen = s
+	report_dim.visible = s == "report" and match_ != null
 	if s == "gladiator" and was != "gladiator":
 		hero_turn = 0.0
 	if backdrop and backdrop.hero and (was == "gladiator") != (s == "gladiator"):
@@ -440,7 +452,10 @@ func show_screen(s: String, msg := "") -> void:
 	panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new() if s == "main" else (_lobby_style() if s == "room" else panel_style))
 	if s != "main":
 		UIStyle.frame_over(panel, Vector2(32, 26))
-	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" or s == "endless" or s == "endless_armour" or s == "room" else 760), 0)
+	panel.custom_minimum_size = Vector2(520 if s == "main" else (1180 if s == "training" or s == "fights" or s == "training_armour" or s == "endless" or s == "endless_armour" or s == "room" or s == "report" else 760), 0)
+	# (The bout's report stands in the middle of the arena it was fought in, the other screens at its left.)
+	if panel.get_parent() is Control:
+		(panel.get_parent() as Control).size_flags_horizontal = Control.SIZE_SHRINK_CENTER if s == "report" else Control.SIZE_SHRINK_BEGIN
 	# A new screen slides in and its rows come up one after another (a screen redrawn in place,
 	# a count changed in the bag, stays put).
 	var fresh := s != was or not panel.has_meta("shown")
@@ -475,6 +490,7 @@ func show_screen(s: String, msg := "") -> void:
 		"demo_end": _demo_end(v)
 		"campaign_end": _campaign_end(v)
 		"scroll": _scroll(v)
+		"report": _report(v)
 		"rudis": _rudis(v)
 		"campaign_mode": _campaign_mode(v)
 		"training_designs": _training_designs(v)
@@ -4417,6 +4433,11 @@ func _on_finished(r: Dictionary) -> void:
 	if match_ != was:
 		return
 	var mode := match_.mode if match_ else "campaign"
+	# The bout's report over the arena it was fought in (BoutReport, ReportScreen): read until he goes on. (Not by a bot, a headless window, a test.)
+	if mode == "campaign" and r.get("report") is Dictionary and not (r.report.get("rows", []) as Array).is_empty() and not was.headless and not cmd_bot and DisplayServer.get_name() != "headless":
+		await _report_wait(r, was)
+		if match_ != was:
+			return
 	var to_lesson: bool = match_ != null and match_.tut != null and match_.tut.finished
 	if to_lesson:
 		Save.set_value("tutorial_done", true)
@@ -4823,6 +4844,12 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.is_echo() and e.keycode == KEY_F12 and not Net.steam_ready:
 		_screenshot()
 		return
+	# The bout's report: Space or Enter goes on (not in its first moment: a key still held from the fight).
+	if screen == "report" and report_wait and visible and e is InputEventKey and e.pressed and not e.is_echo() and (e.keycode == KEY_SPACE or e.keycode == KEY_ENTER or e.keycode == KEY_KP_ENTER):
+		if Time.get_ticks_msec() - report_t0 > 700:
+			report_wait = false
+		get_viewport().set_input_as_handled()
+		return
 	# The kill cam keeps its own keys (E or Esc skip it): Esc here opened the pause menu over it,
 	# and closing that unpaused the arena in the middle of the replay; R started the bout again
 	# under it.
@@ -4852,6 +4879,42 @@ func _unhandled_input(e: InputEvent) -> void:
 			back_to_forge()
 			return
 		_toggle_pause()
+
+# ---------- The bout's report (BoutReport, ReportScreen) ----------
+
+## The finished bout's report over the arena it was fought in, held until he goes on (its button, Space, Enter), the match is put away (a host who has moved on), or REPORT_MAX_MS are up.
+func _report_wait(r: Dictionary, was: Match) -> void:
+	var duel: bool = bool(was.stage_info.get("duel", false)) if was.stage_info is Dictionary else false
+	var title := Loc.t("You fall")
+	if bool(r.get("won", false)):
+		title = Loc.t("Bout %d won" if duel else "Stage %d cleared") % int(r.get("stage", 1))
+	report_info = {"report": r.report, "title": title}
+	report_wait = true
+	report_t0 = Time.get_ticks_msec()
+	if hud:
+		hud.visible = false
+	if was.input:
+		was.input.enabled = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	bg.visible = false   # (the arena behind it, dimmed: the backdrop of the menus is put back as the match is put away)
+	shade.visible = false
+	show_screen("report")
+	while report_wait and match_ == was and Time.get_ticks_msec() - report_t0 < REPORT_MAX_MS:
+		await get_tree().process_frame
+	report_wait = false
+	report_info = {}
+
+func _report(v: VBoxContainer) -> void:
+	v.add_theme_constant_override("separation", 12)
+	v.add_child(UIStyle.title(String(report_info.get("title", "")), 38))
+	var rep: Dictionary = report_info.get("report", {}) if report_info.get("report") is Dictionary else {}
+	var sc := ReportScreen.new(rep, String(Save.get_value("name", "Gladiator")))
+	v.add_child(sc)
+	var go := UIStyle.button(Loc.t("Continue") + "  (Space)", func():
+		report_wait = false, true)
+	go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	go.custom_minimum_size = Vector2(260, 0)
+	v.add_child(go)
 
 # ---------- The party's glory: the run's scroll and one rudis (PartyGlory) ----------
 

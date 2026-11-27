@@ -2882,5 +2882,22 @@
  "%d denarii to each of you": "%d Denare für jeden von euch",
  "The room is full": "Der Raum ist voll",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tritt (und stampft auf einen, der am Boden liegt), %s schubst. Halte %s, um zum Tritt auszuholen, und lass los, um ihn durchzuziehen: er verletzt und wirft einen Mann zurück. Tritt oder schubse die Puppe.",
- "Push kick: let go of %s to drive it home": "Stoßtritt: lass %s los, um ihn durchzuziehen"
+ "Push kick: let go of %s to drive it home": "Stoßtritt: lass %s los, um ihn durchzuziehen",
+ "Bout time %s": "Kampfdauer %s",
+ "Damage dealt": "Schaden verursacht",
+ "Hardest blow": "Härtester Schlag",
+ "Damage taken": "Schaden erlitten",
+ "Crowd favour": "Gunst der Menge",
+ "Won from the crowd": "Von der Menge gewonnen",
+ "Standing": "Auf den Beinen",
+ "Fallen": "Gefallen",
+ "Slayer": "Bezwinger",
+ "Wrecker": "Zerstörer",
+ "Butcher": "Metzger",
+ "Iron hide": "Eisenhaut",
+ "Good friend": "Guter Freund",
+ "The crowd's darling": "Liebling der Menge",
+ "Top earner": "Spitzenverdiener",
+ "Continue": "Weiter",
+ "MVP": "MVP"
 }

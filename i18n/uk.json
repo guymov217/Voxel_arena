@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "по %d денаріїв кожному",
  "The room is full": "Кімната заповнена",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s — копняк (і топтання лежачого), %s — поштовх. Утримуйте %s, щоб замахнутися ногою, і відпустіть, щоб завдати удару: він ранить і відкидає супротивника. Копніть або штовхніть манекен.",
- "Push kick: let go of %s to drive it home": "Потужний копняк: відпустіть %s, щоб вдарити"
+ "Push kick: let go of %s to drive it home": "Потужний копняк: відпустіть %s, щоб вдарити",
+ "Bout time %s": "Тривалість бою %s",
+ "Damage dealt": "Завдана шкода",
+ "Hardest blow": "Найсильніший удар",
+ "Damage taken": "Отримана шкода",
+ "Crowd favour": "Прихильність натовпу",
+ "Won from the crowd": "Отримано від натовпу",
+ "Standing": "На ногах",
+ "Fallen": "Упав",
+ "Slayer": "Вбивця",
+ "Wrecker": "Руйнівник",
+ "Butcher": "М'ясник",
+ "Iron hide": "Залізна шкіра",
+ "Good friend": "Вірний друг",
+ "The crowd's darling": "Улюбленець натовпу",
+ "Top earner": "Найбільше заробив",
+ "Continue": "Продовжити",
+ "MVP": "MVP"
 }

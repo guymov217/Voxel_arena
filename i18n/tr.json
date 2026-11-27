@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "herkese %d dinar",
  "The room is full": "Oda dolu",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tekme atar (ve yerdeki adamı ezer), %s iter. %s tuşunu basılı tutarak tekmeyi hazırla, bırakınca var gücünle indir: yaralar ve adamı geriye fırlatır. Kuklayı tekmele ya da it.",
- "Push kick: let go of %s to drive it home": "İtici tekme: vurmak için %s tuşunu bırak"
+ "Push kick: let go of %s to drive it home": "İtici tekme: vurmak için %s tuşunu bırak",
+ "Bout time %s": "Dövüş süresi %s",
+ "Damage dealt": "Verilen hasar",
+ "Hardest blow": "En sert darbe",
+ "Damage taken": "Alınan hasar",
+ "Crowd favour": "Kalabalığın sevgisi",
+ "Won from the crowd": "Kalabalıktan kazanılan",
+ "Standing": "Ayakta",
+ "Fallen": "Düştü",
+ "Slayer": "Katil",
+ "Wrecker": "Yıkıcı",
+ "Butcher": "Kasap",
+ "Iron hide": "Demir deri",
+ "Good friend": "İyi dost",
+ "The crowd's darling": "Kalabalığın gözdesi",
+ "Top earner": "En çok kazanan",
+ "Continue": "Devam",
+ "MVP": "MVP"
 }

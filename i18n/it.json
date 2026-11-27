@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "%d denari a testa",
  "The room is full": "La stanza è piena",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s tira un calcio (e calpesta chi è a terra), %s spinge. Tieni premuto %s per caricare il calcio e rilascia per scagliarlo con forza: ferisce e getta indietro l'avversario. Calcia o spingi il fantoccio.",
- "Push kick: let go of %s to drive it home": "Calcio di spinta: rilascia %s per scagliarlo"
+ "Push kick: let go of %s to drive it home": "Calcio di spinta: rilascia %s per scagliarlo",
+ "Bout time %s": "Durata dello scontro %s",
+ "Damage dealt": "Danni inflitti",
+ "Hardest blow": "Colpo più duro",
+ "Damage taken": "Danni subiti",
+ "Crowd favour": "Favore della folla",
+ "Won from the crowd": "Guadagnato dalla folla",
+ "Standing": "In piedi",
+ "Fallen": "Caduto",
+ "Slayer": "Sterminatore",
+ "Wrecker": "Demolitore",
+ "Butcher": "Macellaio",
+ "Iron hide": "Pelle di ferro",
+ "Good friend": "Buon amico",
+ "The crowd's darling": "Il beniamino della folla",
+ "Top earner": "Maggior guadagno",
+ "Continue": "Continua",
+ "MVP": "MVP"
 }

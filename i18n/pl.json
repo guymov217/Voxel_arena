@@ -2879,5 +2879,22 @@
  "%d denarii to each of you": "%d denarów dla każdego",
  "The room is full": "Pokój jest pełny",
  "%s kicks (and stamps on a man who is down), %s shoves. Hold %s to wind a kick up and let go to drive it home: it wounds and throws a man back. Kick or shove the dummy.": "%s – kopnięcie (i deptanie leżącego), %s – pchnięcie. Przytrzymaj %s, by zamachnąć się do kopniaka, i puść, by go wyprowadzić: rani i odrzuca przeciwnika. Kopnij albo pchnij manekina.",
- "Push kick: let go of %s to drive it home": "Kopniak odrzucający: puść %s, by uderzyć"
+ "Push kick: let go of %s to drive it home": "Kopniak odrzucający: puść %s, by uderzyć",
+ "Bout time %s": "Czas walki %s",
+ "Damage dealt": "Zadane obrażenia",
+ "Hardest blow": "Najmocniejszy cios",
+ "Damage taken": "Odniesione obrażenia",
+ "Crowd favour": "Przychylność tłumu",
+ "Won from the crowd": "Zdobyte od tłumu",
+ "Standing": "Na nogach",
+ "Fallen": "Poległ",
+ "Slayer": "Pogromca",
+ "Wrecker": "Niszczyciel",
+ "Butcher": "Rzeźnik",
+ "Iron hide": "Żelazna skóra",
+ "Good friend": "Dobry przyjaciel",
+ "The crowd's darling": "Ulubieniec tłumu",
+ "Top earner": "Największy zarobek",
+ "Continue": "Dalej",
+ "MVP": "MVP"
 }
