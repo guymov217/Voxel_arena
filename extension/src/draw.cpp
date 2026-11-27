@@ -179,6 +179,79 @@ PackedInt32Array VoxelCore::clip_plates(const Transform3D &to_t, const PackedVec
 	return out;
 }
 
+namespace {
+// FineArmor.in_outline, as the script does it: scalars in double, the point's own numbers floats, the table's too.
+bool dr_in_outline(const Vector3 &q, double fsz, const Vector3 &h, int64_t rows, int64_t margin, const PackedFloat32Array &tab, double thick, double pad) {
+	const double fr = ((double)q.y + (double)h.y) / fsz - 0.5 + (double)margin;
+	if (fr < 0.0 || fr > (double)(rows - 1)) {
+		return false;
+	}
+	const int64_t r0 = (int64_t)std::floor(fr);
+	const int64_t r1 = r0 + 1 < rows - 1 ? r0 + 1 : rows - 1;
+	const double wr = fr - (double)r0;
+	const double fa = (std::atan2((double)q.z, (double)q.x) + DR_PI) / DR_TAU * 64.0 - 0.5;
+	const int64_t a0 = dr_posmod((int64_t)std::floor(fa), 64);
+	const int64_t a1 = (a0 + 1) % 64;
+	const double wa = fa - std::floor(fa);
+	const int64_t n = tab.size();
+	const float *t = tab.ptr();
+	auto at = [&](int64_t i) -> double { return (i >= 0 && i < n) ? (double)t[i] : 0.0; };
+	const double e0 = at(r0 * 64 + a0) * (1.0 - wa) + at(r0 * 64 + a1) * wa;
+	const double e1 = at(r1 * 64 + a0) * (1.0 - wa) + at(r1 * 64 + a1) * wa;
+	if (e0 <= 0.0 || e1 <= 0.0) {
+		return false;
+	}
+	return (double)Vector2(q.x, q.z).length() < e0 * (1.0 - wr) + e1 * wr + thick + pad;
+}
+} // namespace
+
+PackedInt32Array VoxelCore::clip_plates_flip(const Transform3D &to_t, const PackedVector3Array &origins, const PackedByteArray &on, const PackedByteArray &clip, const AABB &box, const Dictionary &outline, double pad) const {
+	PackedInt32Array out;
+	const int64_t count = on.size();
+	if (origins.size() < count || clip.size() < count) {
+		return out;   // (the script does not ask it of plates it has no place for)
+	}
+	const bool use_ol = !outline.is_empty();
+	double fsz = 1.0;
+	double thick = 0.0;
+	Vector3 h;
+	int64_t rows = 0;
+	int64_t margin = 0;
+	PackedFloat32Array tab;
+	if (use_ol) {
+		fsz = (double)outline["fsz"];
+		h = outline["h"];
+		rows = (int64_t)(double)outline["rows"];
+		const Variant m = outline["margin"];
+		margin = m.get_type() == Variant::FLOAT ? (int64_t)(double)m : (int64_t)m;
+		tab = outline["tab"];
+		thick = (double)outline["thick"];
+	}
+	const uint8_t *a = on.ptr();
+	const uint8_t *c = clip.ptr();
+	const Vector3 *p = origins.ptr();
+	const Vector3 begin = box.position;
+	const Vector3 end = box.position + box.size;
+	for (int64_t k = 0; k < count; k++) {
+		if (a[k] == 0) {
+			continue;
+		}
+		bool in_box = true;
+		const Vector3 q = to_t.xform(p[k]);
+		if (q.x < begin.x || q.y < begin.y || q.z < begin.z || q.x > end.x || q.y > end.y || q.z > end.z) {
+			in_box = false;
+		}
+		if (!in_box && c[k] != 1) {
+			continue;   // (drawn, outside the box, and was: nothing to decide)
+		}
+		const bool inside = in_box && (!use_ol || dr_in_outline(q, fsz, h, rows, margin, tab, thick, pad));
+		if (inside != (c[k] == 1)) {
+			out.push_back((int32_t)k);
+		}
+	}
+	return out;
+}
+
 // The same as guard_cut for a mask `under` of the voxels the arm's armour is over, but worked out from what is
 // known of the guard on its own: `base` is guard_cut of a mask with nothing in it (the voxels the shell holds
 // on to nothing, always cut off). A voxel is cut off by `under` only if every way from it to the shell

@@ -92,6 +92,92 @@ func test_native_searches_match_the_gdscript() -> void:
 	t.check(skin_same, "skin search: the same voxel in C++ and GDScript")
 	m.queue_free()
 
+## The search over the cells round a point (VoxelCore.within_cells: what VoxelPart.voxels_within asks when each voxel of the part has a cell of its own, docs/PERF_RESEARCH.md, section 27)
+## names the very voxels the search over every voxel names (VoxelCore.within) and the script's own, in the same order and down to the limit: for a man's parts and a lion's trunk, whole and
+## cut about, scaled, round a voxel and off the part, with a radius from nothing to the whole of it, exactly on a voxel's distance, a hair either side, and with no number at all.
+func test_native_within_cells_matches_the_full_search() -> void:
+	var nc = Greedy.core()
+	if nc == null or not Greedy.cells_ok:
+		t.check(true, "no native core with the cell search built: the GDScript lines run")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 4, "decrees": [], "hazards": []})
+	var lion = m.spawn_beast({"beast": "lion", "team": Match.ENEMY_TEAM, "pos": Vector3(5, 0.1, 6.0), "yaw": PI, "harmless": true})
+	var parts: Array = m.me.f.parts.duplicate()
+	parts.append_array(lion.f.parts)
+	var bad := []
+	var asked := 0
+	var found := 0
+	var limited := 0
+	var empty := 0
+	var biggest := 0
+	var single := 0
+	for p: VoxelPart in parts:
+		if p.fx.size() == 0:
+			continue
+		biggest = maxi(biggest, p.fx.size())
+		if not p._cells_single():
+			continue
+		single += 1
+		for i in p.alive.size():
+			if rng.randf() < 0.25:
+				p.alive[i] = 0
+		for scale in [1.0, 1.37, 2.6]:
+			p.part_scale = scale
+			var step: float = p.vf * p.part_scale
+			for k in (14 if p.fx.size() < 3000 else 28):
+				var at := p.local_of(rng.randi() % p.fx.size())
+				var r := rng.randf_range(0.0, 3.0) * step
+				match k % 14:
+					0: at += Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1)) * 0.03
+					1: r = p.local_of(rng.randi() % p.fx.size()).distance_to(at)   # (exactly a voxel's distance)
+					2: r = p.local_of(rng.randi() % p.fx.size()).distance_to(at) + 1e-6
+					3: r = maxf(0.0, p.local_of(rng.randi() % p.fx.size()).distance_to(at) - 1e-6)
+					4: r = 0.0
+					5: r = -step
+					6: r = 1000.0   # (the whole part)
+					7: at = Vector3(rng.randf_range(-3, 3), rng.randf_range(-3, 3), rng.randf_range(-3, 3))
+					8: at = Vector3(50.0, -40.0, 30.0)   # (far off the part)
+					9: at = Vector3(NAN, 0.0, 0.0)
+					10: r = NAN
+					11: r = INF
+					12: at += Vector3(step * 0.5, 0.0, 0.0)   # (between two voxels)
+					13: r = step * 0.5001
+				var limit: int = [0, 1, 2, 5, 40][rng.randi() % 5]
+				var want: PackedInt32Array = nc.within(p.fx, p.fy, p.fz, p.alive, p.grid, p.vf, p.part_scale, at, r, limit)
+				var got: PackedInt32Array = nc.within_cells(p.cell_map(), p.fx, p.fy, p.fz, p.alive, p.grid, p.vf, p.part_scale, at, r, limit)
+				var api: PackedInt32Array = p.voxels_within(at, r, limit)
+				asked += 1
+				found += want.size()
+				if limit > 0 and want.size() == limit:
+					limited += 1
+				if want.is_empty():
+					empty += 1
+				if got != want or api != want:
+					bad.append("%s s=%.2f k=%d limit=%d: cells %d, api %d, all %d" % [p.name, scale, k, limit, got.size(), api.size(), want.size()])
+				if k % 3 == 0:
+					# (And the very first lines, over every voxel in script.)
+					var brute := PackedInt32Array()
+					var lps := p.local_positions()
+					for i in lps.size():
+						if p.alive[i] and lps[i].distance_to(at) < r:
+							brute.append(i)
+							if limit > 0 and brute.size() >= limit:
+								break
+					if brute != want:
+						bad.append("%s s=%.2f k=%d limit=%d: script %d, all %d" % [p.name, scale, k, limit, brute.size(), want.size()])
+	t.check(bad.is_empty(), "the cell search names the very voxels the search over all of them names (%d searches; unlike: %s)" % [asked, str(bad.slice(0, 6))])
+	t.check(single >= 10 and asked > 500 and found > 1500 and limited > 20 and empty > 40 and biggest > 3000, "what was asked covers the cases (%d parts with a cell a voxel, %d searches, %d voxels found, %d cut at the limit, %d finding none, the biggest part %d voxels)" % [single, asked, found, limited, empty, biggest])
+	# A cell map of another size than the grid's, and arrays that are not the part's: the full search answers, as it did.
+	var q: VoxelPart = m.me.f.parts[0]
+	var all: PackedInt32Array = nc.within(q.fx, q.fy, q.fz, q.alive, q.grid, q.vf, q.part_scale, Vector3.ZERO, 1.0, 0)
+	t.check(nc.within_cells(PackedInt32Array([1, 2, 3]), q.fx, q.fy, q.fz, q.alive, q.grid, q.vf, q.part_scale, Vector3.ZERO, 1.0, 0) == all, "with a cell map that is not the grid's, every voxel is looked at")
+	t.check(all.size() > 0, "and the part has voxels in the unit sphere (%d)" % all.size())
+	m.queue_free()
+
 ## PD's helpers in C++ give the very floats the GDScript gives (the limb drives are built on them).
 func test_native_pd_matches_the_gdscript() -> void:
 	if Greedy.core() == null:
@@ -566,6 +652,104 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 4200 steps" % kept)
 	t.check(lines > 200 and driven_in > 40 and by_depth > 40 and laid > 80, "a thrust along the blade's line among them: %d steps with a line, %d of them past the drive, %d driven in depth by the mouse, %d with a crosshair to lay it on" % [lines, driven_in, by_depth, laid])
 
+## The plates of an arm's armour the clip is to change, named in one call (VoxelCore.clip_plates_flip for Fighter._clip_arm_armor, docs/PERF_RESEARCH.md, section 27) are the plates the script's
+## lines turn: each drawn plate inside the box of his chest's armour and within his outline there (or the box alone, no outline) is hidden, the others drawn, and a plate whose clip
+## is not what that says is named, nothing else. Boxes of every size, plates on the faces of it and a hair outside, outlines of every kind, plates that are not there and a point that is no number.
+func test_native_clip_plates_flip_matches_the_script() -> void:
+	var nc = Greedy.core()
+	if nc == null or not Greedy.flip_ok:
+		t.check(true, "no native core with the clip call built: the GDScript lines run")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 47
+	var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+	var off := 0
+	var asked := 0
+	var flips := 0
+	var in_out := 0
+	var with_outline := 0
+	var outlined_in := 0
+	var outlined_out := 0
+	for k in 160:
+		var n := rng.randi_range(0, 260)
+		var origins := PackedVector3Array()
+		var on := PackedByteArray()
+		var clip := PackedByteArray()
+		on.resize(n)
+		clip.resize(n)
+		for i in n:
+			origins.append(rv.call(0.15))
+			on[i] = 0 if rng.randf() < 0.15 else 1
+			clip[i] = 1 if rng.randf() < 0.45 else 0
+		var to_t := Transform3D(Basis(Quaternion((rv.call(1.0) as Vector3 + Vector3(0.01, 0, 0)).normalized(), rng.randf_range(-3.0, 3.0))), rv.call(0.06))
+		var bsz := Vector3(rng.randf_range(0.04, 0.5), rng.randf_range(0.04, 0.5), rng.randf_range(0.04, 0.5))
+		var box := AABB((rv.call(0.06) as Vector3) - bsz * 0.5, bsz)
+		if k % 5 == 0:
+			# (On the faces and corners of the box, and a hair outside them, in the box's own frame; and a point that is not a number.)
+			to_t = Transform3D.IDENTITY
+			origins = PackedVector3Array([box.position, box.position + box.size, box.position - Vector3.ONE * 1e-6, box.position + box.size + Vector3.ONE * 1e-6, Vector3(NAN, 0.0, 0.0), box.position + Vector3(box.size.x, 0.0, 0.0), box.get_center()])
+			n = origins.size()
+			on.resize(n)
+			clip.resize(n)
+			on.fill(1)
+			for i in n:
+				clip[i] = 1 if rng.randf() < 0.5 else 0
+		# The outline: none, or a table like the one the shell was laid out by (rows of 64 ways, how far each reaches; some rows and ways empty), as an int or a float margin.
+		var ol := {}
+		var pad := 0.01
+		if k % 4 != 0:
+			var rows := rng.randi_range(8, 40)
+			var margin := rng.randi_range(0, 4)
+			var fsz := rng.randf_range(0.01, 0.06)
+			var tab := PackedFloat32Array()
+			tab.resize(rows * 64)
+			for r in rows:
+				var reach := rng.randf_range(0.04, 0.3) if rng.randf() > 0.2 else 0.0
+				for a in 64:
+					tab[r * 64 + a] = reach * rng.randf_range(0.5, 1.0) if rng.randf() > 0.1 else 0.0
+			# (His middle at about the middle of the rows, where the plates are.)
+			ol = {"tab": tab, "rows": rows, "margin": margin if k % 8 != 1 else float(margin), "fsz": fsz, "h": Vector3(rng.randf_range(0.0, 0.3), fsz * float(rows - margin) * 0.5 + rng.randf_range(-0.03, 0.03), rng.randf_range(0.0, 0.3)), "thick": rng.randf_range(0.0, 0.03)}
+			pad = rng.randf_range(0.0, 0.03)
+			with_outline += 1
+			if k % 16 == 2:
+				# (the table shorter than the rows say: the script reads past it as the core does, a zero)
+				ol["tab"] = tab.slice(0, tab.size() * 3 / 4)
+		var want := PackedInt32Array()
+		for i in n:
+			if on[i] == 0:
+				continue
+			var q: Vector3 = to_t * origins[i]
+			var inside := box.has_point(q) and (ol.is_empty() or _in_outline_script(ol, q, pad))
+			if inside:
+				in_out += 1
+				if not ol.is_empty():
+					outlined_in += 1
+			elif not ol.is_empty() and box.has_point(q):
+				outlined_out += 1
+			if inside != (clip[i] == 1):
+				want.append(i)
+		asked += n
+		flips += want.size()
+		var got: PackedInt32Array = nc.clip_plates_flip(to_t, origins, on, clip, box, ol, pad)
+		if got != want:
+			off += 1
+	t.eq(off, 0, "the same plates for the clip to change as the script's lines name")
+	t.check(asked > 3000 and flips > 800 and in_out > 400 and with_outline > 100 and outlined_in > 100 and outlined_out > 100, "what was asked covers the cases (%d plates, %d to turn, %d inside, %d outlines, %d of them inside the outline and %d in the box and outside it)" % [asked, flips, in_out, with_outline, outlined_in, outlined_out])
+	# (Arrays that are not the plates': the script was given nothing to decide on, and now nothing is named; the older call names every place.)
+	t.check(nc.clip_plates_flip(Transform3D.IDENTITY, PackedVector3Array(), PackedByteArray([1, 1, 0]), PackedByteArray([0, 0, 0]), AABB(), {}, 0.0).is_empty(), "against arrays of another length, none")
+
+## FineArmor.in_outline, but as one that cannot stop on a table that is too short (the script's own reads past the end of one: an error and a nil; the core takes a zero).
+func _in_outline_script(ol: Dictionary, q: Vector3, pad: float) -> bool:
+	var tab: PackedFloat32Array = ol.tab
+	var need: int = int(ol.rows) * 64
+	if tab.size() < need:
+		var full := tab.duplicate()
+		full.resize(need)
+		var ol2 := ol.duplicate()
+		ol2["tab"] = full
+		return FineArmor.in_outline(ol2, q, pad)
+	return FineArmor.in_outline(ol, q, pad)
+
 ## What is asked of every body in one go, in the C++ core (VoxelCore.pack_parts, record_vel; docs/PERF_RESEARCH.md, section 20): a snapshot's rows of the bodies' places are to the
 ## byte what Match.pack_xf writes (the bodies of a fight, and places and turns made up: far off, scaled, mirrored, turned right round), and the velocities the combat keeps of
 ## every body before a step are the same entries in the same order (a chain's head and what lies loose with them).
@@ -586,6 +770,7 @@ func test_native_bulk_matches_the_gdscript() -> void:
 	var bad := []
 	var rows := 0
 	var vels := 0
+	var vels_all := 0
 	var moving := 0
 	var chains := 0
 	for k in 480:
@@ -606,15 +791,34 @@ func test_native_bulk_matches_the_gdscript() -> void:
 			rows += bodies.size()
 			if a != b or b.size() != bodies.size() * 14:
 				bad.append("rows, k=%d" % k)
+		# (The velocities three ways: every line in script, the bodies listed in script and recorded in one call, and the lists given to the core to be gone over there.)
+		var all_ok: bool = Greedy.vel_all_ok
 		Greedy.bulk_ok = false
+		Greedy.vel_all_ok = false
 		m.combat.record_velocities()
 		var va: Dictionary = m.combat.vel.duplicate(true)
 		Greedy.bulk_ok = true
 		m.combat.record_velocities()
-		var vb: Dictionary = m.combat.vel
+		var vb: Dictionary = m.combat.vel.duplicate(true)
 		vels += vb.size()
 		if va.keys() != vb.keys() or va.values() != vb.values():
 			bad.append("velocities, k=%d" % k)
+		if all_ok:
+			Greedy.vel_all_ok = true
+			# (A man gone from the list and a weapon too, as the match leaves them for a frame.)
+			var gone := Node.new()
+			m.combat.fighters.append(gone)
+			gone.free()
+			var dropped := Node.new()
+			m.combat.loose_weapons.append(dropped)
+			dropped.free()
+			m.combat.record_velocities()
+			m.combat.fighters.pop_back()
+			var vc: Dictionary = m.combat.vel
+			vels_all += vc.size()
+			if va.keys() != vc.keys() or va.values() != vc.values():
+				bad.append("velocities of every body in one call, k=%d" % k)
+		Greedy.vel_all_ok = all_ok
 		for v in vb.values():
 			if (v[0] as Vector3).length() > 0.3:
 				moving += 1
@@ -667,6 +871,7 @@ func test_native_bulk_matches_the_gdscript() -> void:
 	m.queue_free()
 	t.check(bad.is_empty(), "the calls for every body are the script's lines to the byte (%d rows, %d velocities, %d made-up places; unlike: %s)" % [rows, vels, made, str(bad.slice(0, 6))])
 	t.check(rows > 5000 and vels > 5000 and moving > 500 and chains > 100 and clamped > 30, "what was asked covers the cases (%d rows, %d velocities, %d of them moving, %d chain heads, %d places past the int16's end)" % [rows, vels, moving, chains, clamped])
+	t.check(not Greedy.vel_all_ok or vels_all == vels, "and the core's own lists gave as many velocities as the script's (%d and %d)" % [vels_all, vels])
 
 ## The ground under a man and the height his hips ride at in the C++ core (VoxelCore.ground_ride for Fighter._ground_ride; docs/PERF_RESEARCH.md, section 23): from the same
 ## man in the same state the script's lines and the core's say the same of whether he stands on it, leave the hips' height, the stoop and the knees' give the same and every

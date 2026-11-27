@@ -31,6 +31,7 @@ var _man: Fighter = null          # (the same, as the Fighter it is: told as thi
 var def: Dictionary = {}
 var part_name := ""
 var touch_asked := -1             # whether anyone asks what it touched (Combat._asked): -1 not yet told, 0, 1
+var strike_ok := -1               # whether it can ever land a blow, cut off or not (Combat._strike_static): -1 not yet told, 0, 1; let go (set to -1) where its def's bite is changed (Beast)
 var label := ""
 var dims := Vector3i.ONE          # body voxels
 var grid := Vector3i.ONE          # fine voxels
@@ -1113,9 +1114,27 @@ func fit_to(slabs: Array) -> void:
 ## ("" the part's own) as its meta "host".
 var skin_shapes: Array = []   # CollisionShape3D
 
+## The box (the part's own frame) that holds every one of its skin shapes, worked out once while the shapes are as they were (skin_set is the only
+## thing that changes them): a point farther than a distance from it is farther than that from every shape. Items.hit_char asks it before it goes over
+## the shapes of each part of a man (a shoulder's cap and the rest: some thirty boxes, seventy thousand instructions a part, for an arrow in the air).
+var _skin_box := AABB()
+var _skin_box_n := -1   # (-1: not worked out for the shapes it has now)
+func skin_box() -> AABB:
+	if _skin_box_n < 0:
+		var lo := Vector3.ONE * INF
+		var hi := -Vector3.ONE * INF
+		for cs: CollisionShape3D in skin_shapes:
+			var he := (cs.shape as BoxShape3D).size * 0.5
+			lo = lo.min(cs.position - he)
+			hi = hi.max(cs.position + he)
+		_skin_box = AABB(lo, hi - lo) if not skin_shapes.is_empty() else AABB()
+		_skin_box_n = skin_shapes.size()
+	return _skin_box
+
 ## The shells as `list` ([AABB, host name]): the shapes there already moved and sized to them, and
 ## only the difference made or freed.
 func skin_set(list: Array) -> void:
+	_skin_box_n = -1
 	while skin_shapes.size() > list.size():
 		var gone: CollisionShape3D = skin_shapes.pop_back()
 		remove_child(gone)
@@ -1232,6 +1251,7 @@ func setup(owner_node: Node, d: Dictionary, voxels: Array, scale_: float, mass_:
 		_man.fn_ver += 1
 		_man.body_ver += 1
 	def = d.duplicate()   # its own: what one creature sets on its part (a fist, a bite) is not every one's after it
+	strike_ok = -1
 	part_name = d.get("name", "part")
 	label = d.get("label", part_name)
 	name = part_name
@@ -1732,6 +1752,9 @@ func local_positions() -> PackedVector3Array:
 func voxels_within(p: Vector3, r: float, limit := 0) -> PackedInt32Array:
 	var nc := Greedy.core()
 	if nc:
+		# (Over the cells round the point where the part has a voxel to a cell: a few dozen looked at, not every voxel of a trunk, the same voxels in the same order.)
+		if Greedy.cells_ok and _cells_single():
+			return nc.within_cells(cell_map(), fx, fy, fz, alive, grid, vf, part_scale, p, r, limit)
 		return nc.within(fx, fy, fz, alive, grid, vf, part_scale, p, r, limit)
 	return _within_script(p, r, limit)
 
@@ -2327,9 +2350,17 @@ func update_drips() -> void:
 			drips.remove_at(i)
 			continue
 		var ps: GPUParticles3D = d.node
-		ps.emitting = flow > 0.03
-		ps.amount_ratio = clampf(0.15 + flow, 0.15, 1.0)
-		if pool_now and ps.emitting:
+		# (An emitter is told what it is to do where that has changed, not every step: two engine calls a drip a step, a man bleeding from a dozen wounds. The ratio moves a little
+		# every step as the wound closes, and is set again once it has moved by more than a particle of a sixty-fourth: its amount is a few dozen.)
+		var em := flow > 0.03
+		if d.get("em") != em:
+			d["em"] = em
+			ps.emitting = em
+		var ar := clampf(0.15 + flow, 0.15, 1.0)
+		if absf(ar - float(d.get("ar", -1.0))) >= 0.015625:
+			d["ar"] = ar
+			ps.amount_ratio = ar
+		if pool_now and em:
 			var at := ps.global_position
 			Fx.current.blood_at(Vector3(at.x, 0.0, at.z), 0.06 + 0.14 * flow)
 
@@ -2379,7 +2410,10 @@ func update_blood(dt: float, beat: float) -> void:
 	var flow := bleed + artery
 	for s in spurts:
 		if is_instance_valid(s.node):
-			(s.node as GPUParticles3D).emitting = artery > 0.3 and beat > 0.55 and not severed
+			var jet := artery > 0.3 and beat > 0.55 and not severed
+			if s.get("on") != jet:   # (set where it changes: the jet pulses a few times a second, not every step)
+				s["on"] = jet
+				(s.node as GPUParticles3D).emitting = jet
 	if runs.is_empty() or flow < 0.05:
 		return
 	_blood_t += dt

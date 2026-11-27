@@ -2,6 +2,7 @@
 
 #include <godot_cpp/core/class_db.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -12,6 +13,7 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("greedy_boxes", "w", "h", "d", "solid"), &VoxelCore::greedy_boxes);
 	ClassDB::bind_method(D_METHOD("loose_lumps", "cell", "w", "h", "d", "axis", "edge"), &VoxelCore::loose_lumps);
 	ClassDB::bind_method(D_METHOD("within", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "p", "r", "limit"), &VoxelCore::within);
+	ClassDB::bind_method(D_METHOD("within_cells", "cellmap", "fx", "fy", "fz", "alive", "grid", "vf", "scale", "p", "r", "limit"), &VoxelCore::within_cells);
 	ClassDB::bind_method(D_METHOD("motor_rel", "part", "parent", "rel_q", "wn", "max_t", "dt", "react"), &VoxelCore::motor_rel);
 	ClassDB::bind_method(D_METHOD("pd_relative", "part", "parent", "rel_q", "wn", "zeta", "max_t", "dt", "boost", "react"), &VoxelCore::pd_relative);
 	ClassDB::bind_method(D_METHOD("pd_axis", "part", "local_axis", "des", "wn", "zeta", "max_t", "dt", "scale", "w_des"), &VoxelCore::pd_axis);
@@ -27,6 +29,7 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("guard_cut_near", "under", "adj", "adj_at", "anc", "base"), &VoxelCore::guard_cut_near);
 	ClassDB::bind_method(D_METHOD("bytes_changed", "was", "now"), &VoxelCore::bytes_changed);
 	ClassDB::bind_method(D_METHOD("clip_plates", "to_t", "origins", "on", "clip", "box"), &VoxelCore::clip_plates);
+	ClassDB::bind_method(D_METHOD("clip_plates_flip", "to_t", "origins", "on", "clip", "box", "outline", "pad"), &VoxelCore::clip_plates_flip);
 	ClassDB::bind_method(D_METHOD("lay_plates", "plates", "shell", "base", "on", "clip", "of_at", "of", "rel", "vclip", "now", "q", "n", "theta", "b", "k", "axis", "pv", "tip", "far_x"), &VoxelCore::lay_plates);
 	ClassDB::bind_method(D_METHOD("lay_cells", "multimesh", "rows", "slots", "q", "n", "theta", "b", "k", "axis", "pv", "tip", "far_x"), &VoxelCore::lay_cells);
 	ClassDB::bind_method(D_METHOD("fine_ready", "part"), &VoxelCore::fine_ready);
@@ -63,6 +66,7 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("drive_api"), &VoxelCore::drive_api);
 	ClassDB::bind_method(D_METHOD("pack_parts", "parts"), &VoxelCore::pack_parts);
 	ClassDB::bind_method(D_METHOD("record_vel", "bodies", "vel"), &VoxelCore::record_vel);
+	ClassDB::bind_method(D_METHOD("record_vel_all", "fighters", "loose", "vel"), &VoxelCore::record_vel_all);
 	ClassDB::bind_method(D_METHOD("arm_free", "upper", "fore", "torso", "head", "shield", "hp", "t_pos", "t_rot", "yaw_q", "shoulder_l", "hand_point", "torso_half", "head_half", "sculpt", "o_up", "o_fo", "refs", "side", "up_half", "up_pa", "up_ca", "fo_pa", "fo_ca", "k"), &VoxelCore::arm_free);
 	ClassDB::bind_method(D_METHOD("smooth_solid", "at", "inner", "res", "seal_lo", "seal_hi", "pad"), &VoxelCore::smooth_solid);
 	ClassDB::bind_method(D_METHOD("smooth_joined", "sol", "beside"), &VoxelCore::smooth_joined);
@@ -111,6 +115,60 @@ PackedInt32Array VoxelCore::within(const PackedInt32Array &fx, const PackedInt32
 				break;
 			}
 		}
+	}
+	return out;
+}
+
+PackedInt32Array VoxelCore::within_cells(const PackedInt32Array &cellmap, const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &p, double r, int limit) const {
+	const int64_t gx = grid.x, gy = grid.y, gz = grid.z;
+	const double s = vf * scale;
+	if (!sizes_ok(fx, fy, fz, alive) || gx <= 0 || gy <= 0 || gz <= 0 || cellmap.size() != gx * gy * gz || !(s > 0.0) || !(r > 0.0) || !std::isfinite((double)p.x) || !std::isfinite((double)p.y) || !std::isfinite((double)p.z) || !std::isfinite(r)) {
+		return within(fx, fy, fz, alive, grid, vf, scale, p, r, limit);
+	}
+	const Frame f(grid, vf, scale);
+	const double pc[3] = { (double)p.x, (double)p.y, (double)p.z };
+	const double cc[3] = { (gx - 1) * 0.5, (gy - 1) * 0.5, (gz - 1) * 0.5 };
+	const int64_t gg[3] = { gx, gy, gz };
+	int64_t lo[3];
+	int64_t hi[3];
+	for (int k = 0; k < 3; k++) {
+		// (The cells the sphere reaches, two more all round than it need: a voxel's place is a float's, and the same test is made of each voxel found.)
+		double a = std::floor((pc[k] - r) / s + cc[k]) - 2.0;
+		double b = std::ceil((pc[k] + r) / s + cc[k]) + 2.0;
+		a = a < 0.0 ? 0.0 : (a > 1e9 ? 1e9 : a);
+		b = b > (double)(gg[k] - 1) ? (double)(gg[k] - 1) : (b < -1.0 ? -1.0 : b);
+		lo[k] = (int64_t)a;
+		hi[k] = (int64_t)b;
+		if (hi[k] < lo[k]) {
+			return PackedInt32Array();
+		}
+	}
+	const int32_t *cm = cellmap.ptr();
+	const int32_t *x = fx.ptr();
+	const int32_t *y = fy.ptr();
+	const int32_t *z = fz.ptr();
+	const uint8_t *a = alive.ptr();
+	const int64_t n = fx.size();
+	std::vector<int32_t> found;
+	for (int64_t cx = lo[0]; cx <= hi[0]; cx++) {
+		for (int64_t cy = lo[1]; cy <= hi[1]; cy++) {
+			const int64_t row = (cx * gy + cy) * gz;
+			for (int64_t cz = lo[2]; cz <= hi[2]; cz++) {
+				const int64_t i = (int64_t)cm[row + cz] - 1;
+				if (i < 0 || i >= n || a[i] == 0) {
+					continue;
+				}
+				if ((double)f.at(x[i], y[i], z[i]).distance_to(p) < r) {
+					found.push_back((int32_t)i);
+				}
+			}
+		}
+	}
+	std::sort(found.begin(), found.end());
+	PackedInt32Array out;
+	const int64_t take = (limit > 0 && (int64_t)found.size() > limit) ? limit : (int64_t)found.size();
+	for (int64_t k = 0; k < take; k++) {
+		out.push_back(found[k]);
 	}
 	return out;
 }

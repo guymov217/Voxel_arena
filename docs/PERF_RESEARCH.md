@@ -993,3 +993,66 @@ driving it in depth, with a crosshair and without, the line's clock sent on past
 back) and by the fingerprints (0 lines of 39). `_drive_arm` -9.2%, **the fighting step 40.27 -> 39.27 million, -2.5%**; since the fourth report 45.0 -> 39.3, **-12.7%**.
 
 Left of the arms the core does not drive: both hands on a haft (the guard hand's place and the front hand's, `_drive_haft`), an archer's, a shove's, a crawling man's.
+
+## 27. Where the blows, the blood and the dead make a fight dearer (the fifth report, #345)
+
+The fifth report's word, and the owner's: the drops begin when weapons swing, limbs are cut and blood flows. Counted in instructions (`tools/ir_profile`, the endless fight of
+eight men and their foes with the effects on, `IR_FX=1`, the second 28: eight alive, two of them foes, seven blows in the second, 13 parts bleeding, an arrow flying, 160 lumps on the sand and two gut ropes)
+what a step and a frame do, function by function (million instructions, the scripts' own, inclusive of what a function calls):
+
+| the step | before | after | |
+|---|---|---|---|
+| `VoxelPart._integrate_forces` (the contacts of 95 bodies; 57 of them reach `Combat.report`) | 4.49 | 3.59 | `report` 3.90 -> 3.01 |
+| `Combat._physics_process` | 3.05 | 2.44 | `process_contacts` 2.49 -> 1.95, `record_velocities` 0.48 -> 0.41 |
+| the gut ropes (two) | 1.17 | 0.81 | |
+| `Items.update` (an arrow in the air) | 1.04 | 0.42 | |
+| `Weapon._physics_process` (27 weapons) | 0.56 | 0.43 | |
+| `Match._physics_process` (the men's `control`, 12.1 of it, and the rest of the step) | 18.02 | 17.21 | the arrow and the bow, 0.9 |
+| **the step's callbacks together** | **28.1** | **25.3** | **-2.8, -10.0%** |
+
+| a frame | before | after | |
+|---|---|---|---|
+| `Fx._process` (every blood stain, faded each frame) | 1.11 | 0.06 | |
+| `Fighter._clip_arm_armor` (ten men) | 3.57 | 2.53 | the arm's plates 1.6 -> 0.5 |
+| `Fighter._process` | 8.56 | 7.53 | |
+
+At the owner's 51 frames a second a step is worth 2.35 times a frame's instruction: -2.8 a step and -2.1 a frame are 8.7 million of about 79 a frame, **-11% of the scripts' work**.
+All of it to the bit: the fingerprints (0 lines of 39), the equivalence tests below, the whole suite.
+
+**What each cut is.**
+
+- **The contacts.** `Combat.report` (a body's contacts, 57 a step at 68 thousand each) reads each thing once: the owner's and the other's members hoisted out of the loop, `bf is Fighter`
+  asked once, the sum of a body's damage (`b_sev`) and whether it is dead (`b_dead`) only where a blow is possible, and what of `_may_strike` does not change as a man is hurt (a striking
+  part, a jaw, a point, a tusk) told of a part once (`VoxelPart.strike_ok`, let go again where a beast is given a bite: `Beast`). The notes a contact leaves (`Combat._note`) are arrays of five,
+  not dictionaries (`touch_notes()` makes the dictionaries the callers want). `process_contacts` has one branch for the regular blow (`a_man`/`b_man`, a club or a severed piece asked once, the
+  skin shapes looked at before `host_part`). **The velocities** (`VoxelCore.record_vel_all`): the core is given the fighters and the loose weapons and goes over their parts, weapons and chain heads in
+  the order the script did (the same entries in the same order: `tests/test_native.gd`, three ways), a man or a weapon freed in the list skipped as `is_instance_valid` skipped it.
+- **The gut ropes.** A link's `_keep_out` asks `voxels_within` for the voxels of his trunk near it, and the core's `within` went over every voxel of the trunk (3 500; 79 thousand
+  instructions a call, five and a half calls a step). `VoxelCore.within_cells` looks at the cells of the part's grid round the point only (two more all round than the sphere needs, the same test
+  made of each voxel found, sorted by index, cut at the limit): 12.6 thousand a call. `VoxelPart.voxels_within` uses it where each voxel has a cell of its own (`_cells_single`).
+- **Blood.** A stain's fade (a decal of blood drying to brown) every frame, for every stain, was 1.05 million a frame with the fight going: it is worked out every quarter of a second now
+  (`Fx._dry_t`; a new stain is red at once), and a drip's emitter, a spurt, are asked to emit or to stop only when that changed (`d["em"]`, `d["ar"]`, `s["on"]`: an engine property's
+  setter is 2 thousand instructions, the same value again as much).
+- **Things lying about.** A weapon that nobody holds and that sleeps asked the floor and its own lie each step; it does not (`Weapon._out_of_the_floor`, `_lie`).
+- **The arm's armour in the frame.** `_clip_arm_armor` asked the outline of the chest of each of the few plates in or near its box (13 thousand instructions a plate) in script: the core names
+  the plates whose clip is to change (`VoxelCore.clip_plates_flip`: `FineArmor.in_outline` in C++, to the bit), the script flips those.
+- **Arrows and bows.** An arrow in the air asks every part of every man near it, at a point every eight centimetres of its flight, how far it is from the part's box and from its skin
+  (`Social.box_distance`): the skin is some thirty boxes in script, 72 thousand instructions a part (a flying arrow was 0.9 million a step). The skin is looked at only where the point is
+  within the arrow's reach of the box that holds all its shapes (`VoxelPart.skin_box`, kept while `skin_set` does not change the shapes; a tenth of a millimetre of margin for the floats):
+  `Social.box_reaches`, the answers of `Items.hit_char` to the line. And a bowman's bow asked the heights of all its hundred voxels twice every step (`_draw_bow`, `_show_draw`, 0.5 million a step for
+  the archers of the fight): they are kept on the bow (`Weapon.bow_geo`, `Throwables._bow_geo`; a weapon's design is its own copy and is not changed).
+
+**Held by**: `test_native_within_cells_matches_the_full_search` (about a thousand searches a run on a man's parts and a lion's, whole, cut about and scaled, the radius on a voxel's distance and a hair either side, no number at all,
+every limit), `test_native_clip_plates_flip_matches_the_script` (160 sets of plates against random outlines, the box's faces and corners), `test_native_bulk_matches_the_gdscript` (the velocities three ways: script,
+the bodies in one call, the lists in the core), `test_an_arrows_questions_of_a_part_are_what_the_distance_to_the_box_and_the_skin_said` (400 points a part in and round the skin of a man, six radii; `Items.hit_char` and the old one), `test_the_box_that_holds_a_parts_skin_follows_its_shapes`, `test_a_bows_drawing_asks_the_same_of_its_design_as_the_lines_over_every_voxel_did`, the fingerprints
+(0 lines of 39) and the suite.
+
+**What was found and is left** (all of it exact; the cost is where it is at the second 28, a step or a frame):
+
+- *the step*: the men's `control` 12.2 (the arms 4.7, 19 calls: the two-handed arms, an archer's, a shove's and a crawler's are the dear ones, about 3.2 of it; the rest 7.4: `_no_fling`,
+  bleeding, the legs, the ground, the glue of the core's calls), the contacts 3.6 (57 reports at 52 thousand: each contact's reads of the engine's state) and `process_contacts` 2.0, `Bot.update`
+  1.5 (155 thousand a man), the gut ropes 0.8 (two at 400 thousand: the engine's contacts of every link), 161 sleeping chunks 0.6 (the call itself, 3.8 thousand each), `nearest_enemy` 0.45,
+  a hit (`apply_hit` 4.7 million a hit; an arrow's splat event 20 million: the dearest single thing of a step);
+- *the frame*: `_seat_drawing` 3.6 (the parts' loop 1.2, `_off_clear_drawing` 1.5 for a two-hander, the guard arm's turn 0.5, the grip 0.3), the shoulder guards 1.45 and the limbs in armour 0.5, `Match._process` 1.5,
+  the parts' own `_process` 1.0 (101 calls: the engine's property sets), the weapons' 0.9, `_bend_drawing` 0.4.
+  Each is one to two per cent of a step's work once the frame's weight is taken: a port of the two-handed arm drive (the one that is largest) is the next piece.

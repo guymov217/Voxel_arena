@@ -41,6 +41,9 @@ public:
 	// The living voxels (fx, fy, fz, alive of a VoxelPart) whose VoxelPart.local_of lies nearer
 	// than `r` to `p`, in index order; at most `limit` of them (0: all).
 	PackedInt32Array within(const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &p, double r, int limit) const;
+	// `within` going over the cells round the point only (`cellmap`: the part's grid cell -> voxel index + 1, one voxel to a cell): the same voxels in the same order, a few
+	// dozen looked at where `within` looks at every voxel of the part (a trunk has three and a half thousand).
+	PackedInt32Array within_cells(const PackedInt32Array &cellmap, const PackedInt32Array &fx, const PackedInt32Array &fy, const PackedInt32Array &fz, const PackedByteArray &alive, const Vector3i &grid, double vf, double scale, const Vector3 &p, double r, int limit) const;
 	// VoxelPart.update_blood's search: of the living voxels at most `max_depth` under a face of
 	// the box `half_ext`, the one nearest `want`. Returns [index or -1, squared distance].
 	// The PD drives of the limbs (Fighter.motor_rel, pd_relative, pd_axis, pd_twist, with the
@@ -70,6 +73,9 @@ public:
 	PackedByteArray guard_cut_near(const PackedByteArray &under, const PackedInt32Array &adj, const PackedInt32Array &adj_at, const PackedByteArray &anc, const PackedByteArray &base) const;
 	PackedInt32Array bytes_changed(const PackedByteArray &was, const PackedByteArray &now) const;
 	PackedInt32Array clip_plates(const Transform3D &to_t, const PackedVector3Array &origins, const PackedByteArray &on, const PackedByteArray &clip, const AABB &box) const;
+	// clip_plates and what the script then decides of each plate it names (Fighter._clip_arm_armor): the places of the plates whose clip is to change, those in the box and, with an
+	// outline (`outline`: FineArmor.outline, empty for none), within it (FineArmor.in_outline, `pad` more taken in) that are not clipped, and those not there that are.
+	PackedInt32Array clip_plates_flip(const Transform3D &to_t, const PackedVector3Array &origins, const PackedByteArray &on, const PackedByteArray &clip, const AABB &box, const Dictionary &outline, double pad) const;
 	void lay_plates(Object *plates, Object *shell, const PackedFloat32Array &base, const PackedByteArray &on, const PackedByteArray &clip, const PackedInt32Array &of_at, const PackedInt32Array &of, const PackedFloat32Array &rel, const PackedByteArray &vclip, Dictionary now, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const;
 	void lay_cells(Object *multimesh, const PackedFloat32Array &rows, const PackedInt32Array &slots, const Quaternion &q, const Vector3 &n, double theta, double b, double k, int axis, const Vector3 &pv, const Vector3 &tip, const Transform3D &far_x) const;
 	// What a blow changes of a man's fine look (fine.cpp; `part` a VoxelPart with FineBody's look on
@@ -137,6 +143,8 @@ public:
 	int drive_api() const;
 	PackedByteArray pack_parts(const Array &parts) const;
 	void record_vel(const Array &bodies, Dictionary vel) const;
+	// record_vel of every body Combat.record_velocities lists: each fighter's parts, the weapons in his hands and their chain heads, then the loose weapons and theirs.
+	void record_vel_all(const Array &fighters, const Array &loose, Dictionary vel) const;
 	bool arm_mark_core(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, bool blade, RigidBody3D *w, bool line_ok, const Dictionary &hp_in, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_fo, const Array &refs, const String &side, const double *kk, ArmMark &out) const;
 	void arm_keep(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Vector3 &up_half, const Vector3 &up_pa, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &fo_ca, const double *kk) const;
 	bool arm_free(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, RigidBody3D *head, RigidBody3D *shield, const Dictionary &hp_in, const Vector3 &t_pos, const Quaternion &t_rot, const Quaternion &yaw_q, const Vector3 &shoulder_l, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_half, const Dictionary &sculpt, const Dictionary &o_up, const Dictionary &o_fo, const Array &refs, const String &side, const Vector3 &up_half, const Vector3 &up_pa, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &fo_ca, const PackedFloat64Array &k) const;

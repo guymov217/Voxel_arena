@@ -294,9 +294,13 @@ func hit_char(p: Vector3, chars: Array, r: float, owner_, any_part: bool):
 		for part in parts:
 			if part == null or part.severed:
 				continue
+			if any_part:
+				if Social.box_reaches(part, p, r):
+					return {"char": c, "part": Social.struck_part(part, p)}
+				continue
 			var d := Social.box_distance(part, p)
-			if d <= 0.0 or (r > 0.17 and d < r) or (not any_part and part.global_position.distance_to(p) < r + 0.1 * c.S):
-				return {"char": c, "part": Social.struck_part(part, p) if any_part else part}
+			if d <= 0.0 or (r > 0.17 and d < r) or part.global_position.distance_to(p) < r + 0.1 * c.S:
+				return {"char": c, "part": part}
 	return null
 
 ## One step: flight, landing, hits. `chars` are the fighters and beasts in the arena.

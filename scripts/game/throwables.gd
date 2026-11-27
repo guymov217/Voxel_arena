@@ -2428,12 +2428,9 @@ func _draw_bow(e: Dictionary, w: Weapon, inp: Dictionary, dt: float) -> void:
 	var c = e.f
 	var pull := arrow_pull(c)   # (a strong arm's draw: faster arrows)
 	var held: bool = inp.get("power", false)
-	var ys := []
-	for v in w.design.voxels:
-		ys.append(v[1])
 	# A war bow is hard work: a long pull (longer the longer the limbs, slower tired), a pause to
 	# nock the next arrow after each shot, and a full draw held costs breath fast.
-	var draw_time := (0.9 + (int(ys.max()) - int(ys.min())) * 0.035) * (1.0 + 0.6 * (1.0 - minf(1.0, c.stamina / 100.0)))
+	var draw_time := (0.9 + int(_bow_geo(w)[2]) * 0.035) * (1.0 + 0.6 * (1.0 - minf(1.0, c.stamina / 100.0)))
 	var nock: float = maxf(0.0, float(w.get_meta("nock", 0.0)) - dt)
 	w.set_meta("nock", nock)
 	var draw: float = w.get_meta("draw", 0.0)
@@ -2633,6 +2630,29 @@ func _show_cock(w: Weapon, c, k: float) -> void:
 	bolt_n.position = Vector3(0, latch_y + 0.17, 0.04)
 	w.set_string_hidden(k < 1.0)
 
+## What a bow's drawing asks of its design's voxels (each step of a bowman: the string's ends and the nock in _show_draw, the length of the pull in _draw_bow), worked out
+## once and kept on the bow: [the voxels they were worked out of, how many, the span of their heights, the lowest and the highest height of the leather behind the stave
+## (2 and 18 where there is none), how far back it reaches]. A weapon's design is its own copy (Weapon.setup) and its voxels are never changed in it; the same array
+## and the same count mean the same answers. (Worked out each step, a bow's hundred voxels were a hundred thousand instructions a step for each bowman.)
+func _bow_geo(w: Weapon) -> Array:
+	var vx: Array = w.design.voxels
+	var g: Array = w.bow_geo
+	if not g.is_empty() and is_same(g[0], vx) and g[1] == vx.size():
+		return g
+	var ys := []
+	for v in vx:
+		ys.append(v[1])
+	var span: int = int(ys.max()) - int(ys.min())
+	var ys2 := []
+	var sx := 0.0
+	for v in vx:
+		if v[3] == "leather" and v[0] < 0:
+			ys2.append(v[1])
+			sx = minf(sx, v[0])
+	g = [vx, vx.size(), span, (ys2.min() if not ys2.is_empty() else 2), (ys2.max() if not ys2.is_empty() else 18), sx]
+	w.bow_geo = g
+	return g
+
 func _tip(w: Weapon) -> Array:
 	var top := -999
 	for v in w.design.voxels:
@@ -2645,14 +2665,10 @@ func _tip(w: Weapon) -> Array:
 ## side, the arrow flies out along +x.
 func _show_draw(w: Weapon, c, d: float) -> void:
 	var vs: float = w.vs
-	var ys := []
-	var sx := 0.0
-	for v in w.design.voxels:
-		if v[3] == "leather" and v[0] < 0:
-			ys.append(v[1])
-			sx = minf(sx, v[0])
-	var y0: float = (ys.min() if not ys.is_empty() else 2) * vs
-	var y1: float = (ys.max() if not ys.is_empty() else 18) * vs
+	var geo := _bow_geo(w)
+	var sx: float = geo[5]
+	var y0: float = geo[3] * vs
+	var y1: float = geo[4] * vs
 	sx *= vs
 	var pull := sx - d * 7.0 * vs
 	var ym := (y0 + y1) * 0.5

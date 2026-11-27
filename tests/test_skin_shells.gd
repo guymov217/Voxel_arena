@@ -310,3 +310,117 @@ func test_the_classic_look_draws_nothing_out_of_the_boxes() -> void:
 	t.eq(all, 0, "and undressed, none again")
 	f.state = "dead"
 	f.alive = false
+
+## The old Items.hit_char, to the line: what an arrow asks of every part of a man.
+func _hit_char_old(items: Items, p: Vector3, chars: Array, r: float, owner_, any_part: bool):
+	for c in chars:
+		if not is_instance_valid(c) or not c.alive or c == owner_:
+			continue
+		if c.torso.global_position.distance_squared_to(p) > pow(3.2 * float(c.S) + r, 2.0):
+			continue
+		var parts: Array = c.parts if any_part else [c.head, c.torso]
+		for part in parts:
+			if part == null or part.severed:
+				continue
+			var d := Social.box_distance(part, p)
+			if d <= 0.0 or (r > 0.17 and d < r) or (not any_part and part.global_position.distance_to(p) < r + 0.1 * c.S):
+				return {"char": c, "part": Social.struck_part(part, p) if any_part else part}
+	return null
+
+## What an arrow in the air asks of a man's part (Social.box_reaches: the box's distance and the skin's, the skin's shapes gone over only where the point is near the box that holds
+## them all, VoxelPart.skin_box) is what the distance to the box and the skin (Social.box_distance) said, for points inside, at the edge of, near and far from every shape of a man's
+## skin; and Items.hit_char names the same man and the same part as it did.
+func test_an_arrows_questions_of_a_part_are_what_the_distance_to_the_box_and_the_skin_said() -> void:
+	var m := _match()
+	var f := _man(m)
+	await _steps(30)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var items := Items.new()
+	var bad := []
+	var asked := 0
+	var yes := 0
+	var by_skin := 0
+	var skinned := 0
+	var radii := [0.05, 0.16, 0.17, 0.1701, 0.22, 0.45]
+	for part: VoxelPart in f.parts:
+		if part.skin_shapes.is_empty():
+			continue
+		skinned += 1
+		for k in 400:
+			var local: Vector3
+			match k % 5:
+				0, 1:
+					# in, on and round the edge of a shape of the skin
+					var cs: CollisionShape3D = part.skin_shapes[rng.randi() % part.skin_shapes.size()]
+					var he := (cs.shape as BoxShape3D).size * 0.5
+					local = cs.position + Vector3(rng.randf_range(-1, 1) * (he.x + 0.12), rng.randf_range(-1, 1) * (he.y + 0.12), rng.randf_range(-1, 1) * (he.z + 0.12))
+					if k % 5 == 1:
+						local = cs.position + Vector3(he.x * float(rng.randi_range(-1, 1)), he.y * float(rng.randi_range(-1, 1)), he.z * float(rng.randi_range(-1, 1))) + Vector3(1e-5, -1e-5, 0.0) * float(rng.randi_range(-1, 1))
+				2:
+					local = part.half_ext * Vector3(rng.randf_range(-1.6, 1.6), rng.randf_range(-1.6, 1.6), rng.randf_range(-1.6, 1.6))
+				3:
+					local = Vector3(rng.randf_range(-0.7, 0.7), rng.randf_range(-0.7, 0.7), rng.randf_range(-0.7, 0.7))
+				_:
+					local = Vector3(rng.randf_range(-2.0, 2.0), rng.randf_range(-2.0, 2.0), rng.randf_range(-2.0, 2.0))
+			var at: Vector3 = part.global_transform * local
+			var r: float = radii[rng.randi() % radii.size()]
+			var d := Social.box_distance(part, at)
+			var want := d <= 0.0 or (r > 0.17 and d < r)
+			var got := Social.box_reaches(part, at, r)
+			asked += 1
+			if want:
+				yes += 1
+				# (Where the box alone does not say so: the skin does.)
+				var he0 := part.half_ext
+				var l0: Vector3 = part.global_transform.affine_inverse() * at
+				var db := Vector3(maxf(0.0, absf(l0.x) - he0.x), maxf(0.0, absf(l0.y) - he0.y), maxf(0.0, absf(l0.z) - he0.z)).length()
+				if not (db <= 0.0 or (r > 0.17 and db < r)):
+					by_skin += 1
+			if got != want:
+				bad.append("%s k=%d r=%.4f: %s, not %s" % [part.name, k, r, got, want])
+			var hit_new = items.hit_char(at, [f], r, null, true)
+			var hit_old = _hit_char_old(items, at, [f], r, null, true)
+			if (hit_new == null) != (hit_old == null) or (hit_new != null and (hit_new.char != hit_old.char or hit_new.part != hit_old.part)):
+				bad.append("hit_char %s k=%d r=%.4f" % [part.name, k, r])
+			var hit_new2 = items.hit_char(at, [f], r, null, false)
+			var hit_old2 = _hit_char_old(items, at, [f], r, null, false)
+			if (hit_new2 == null) != (hit_old2 == null) or (hit_new2 != null and (hit_new2.char != hit_old2.char or hit_new2.part != hit_old2.part)):
+				bad.append("hit_char (a dart) %s k=%d r=%.4f" % [part.name, k, r])
+	t.check(bad.is_empty(), "the same answers to the two questions and the same man and part struck (%d asked; unlike: %s)" % [asked, str(bad.slice(0, 5))])
+	t.check(skinned >= 3 and asked > 1200 and yes > 400 and by_skin > 50 and asked - yes > 400, "what was asked covers the cases (%d parts with a skin, %d points, %d reached, %d of them by the skin alone)" % [skinned, asked, yes, by_skin])
+	f.state = "dead"
+	f.alive = false
+
+## The box that holds every shape of a part's skin (VoxelPart.skin_box): each shape within it, worked out again when the shapes change, and none for none.
+func test_the_box_that_holds_a_parts_skin_follows_its_shapes() -> void:
+	var m := _match()
+	var f := _man(m)
+	await _steps(20)
+	var worst := 0.0
+	var parts := 0
+	for part: VoxelPart in f.parts:
+		if part.skin_shapes.is_empty():
+			t.eq(part.skin_box(), AABB(), "no shapes, no box (%s)" % part.name)
+			continue
+		parts += 1
+		var sb := part.skin_box()
+		var tight := false
+		for cs: CollisionShape3D in part.skin_shapes:
+			var he := (cs.shape as BoxShape3D).size * 0.5
+			var lo := cs.position - he
+			var hi := cs.position + he
+			worst = maxf(worst, maxf(maxf(sb.position.x - lo.x, sb.position.y - lo.y), maxf(sb.position.z - lo.z, maxf(hi.x - sb.end.x, maxf(hi.y - sb.end.y, hi.z - sb.end.z)))))
+			if is_equal_approx(lo.x, sb.position.x) or is_equal_approx(hi.x, sb.end.x):
+				tight = true
+		t.check(tight, "and the box is no wider than the shapes need (%s)" % part.name)
+	t.check(parts >= 3 and worst <= 1e-6, "every shape of %d parts lies within its part's box (worst %.2g m out)" % [parts, worst])
+	var p: VoxelPart = f.torso
+	p.skin_set([[AABB(Vector3(0.1, 0.2, 0.3), Vector3(0.2, 0.2, 0.2)), ""], [AABB(Vector3(-0.2, 0.0, 0.0), Vector3(0.1, 0.1, 0.1)), ""]])
+	t.check(p.skin_box().is_equal_approx(AABB(Vector3(-0.2, 0.0, 0.0), Vector3(0.5, 0.4, 0.5))), "worked out again for new shapes (%s)" % str(p.skin_box()))
+	p.skin_set([[AABB(Vector3(0.1, 0.2, 0.3), Vector3(0.2, 0.2, 0.2)), ""]])
+	t.check(p.skin_box().is_equal_approx(AABB(Vector3(0.1, 0.2, 0.3), Vector3(0.2, 0.2, 0.2))), "and for fewer")
+	p.skin_set([])
+	t.eq(p.skin_box(), AABB(), "and none for none")
+	f.state = "dead"
+	f.alive = false

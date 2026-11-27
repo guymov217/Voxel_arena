@@ -46,6 +46,25 @@ static func box_distance(part: VoxelPart, p: Vector3) -> float:
 		d = minf(d, float(part.skin_near(p)[0]))
 	return d
 
+## Whether `box_distance(part, p)` is 0 or, for `r` over 0.17, less than `r`: Items.hit_char's two questions of a part, answered the same way (the box alone where it answers,
+## and the skin's shapes gone over only where the point is near the box that holds them all: some seventy thousand instructions saved a part an arrow in the air is not near).
+static func box_reaches(part: VoxelPart, p: Vector3, r: float) -> bool:
+	var l: Vector3 = part.global_transform.affine_inverse() * p
+	var he: Vector3 = part.half_ext
+	var d := Vector3(maxf(0.0, absf(l.x) - he.x), maxf(0.0, absf(l.y) - he.y), maxf(0.0, absf(l.z) - he.z)).length()
+	var far := r > 0.17
+	if d <= 0.0 or (far and d < r):
+		return true
+	if part.skin_shapes.is_empty():
+		return false
+	# (The skin is nearer than the box only where the point is within r of the box that holds it: a margin of a tenth of a millimetre for the floats.)
+	var sb := part.skin_box()
+	var q := Vector3(maxf(0.0, maxf(sb.position.x - l.x, l.x - sb.end.x)), maxf(0.0, maxf(sb.position.y - l.y, l.y - sb.end.y)), maxf(0.0, maxf(sb.position.z - l.z, l.z - sb.end.z)))
+	if q.length() > (r if far else 0.0) + 1e-4:
+		return false
+	var ds := float(part.skin_near(p)[0])
+	return ds <= 0.0 or (far and ds < r)
+
 ## The part a thing that is at `p`, in `part`'s box or the skin laid over it, strikes: the part itself,
 ## or the one whose flesh that skin lies on (a shoulder's cap the trunk draws lies on the arm).
 static func struck_part(part: VoxelPart, p: Vector3) -> VoxelPart:

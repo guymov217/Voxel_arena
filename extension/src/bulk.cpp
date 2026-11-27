@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
 
@@ -60,5 +61,85 @@ void VoxelCore::record_vel(const Array &bodies, Dictionary vel) const {
 		a.push_back(b->get_linear_velocity());
 		a.push_back(b->get_angular_velocity());
 		vel[(int64_t)b->get_instance_id()] = a;
+	}
+}
+
+namespace {
+// The names of what Combat.record_velocities reads of a fighter and a weapon, kept for good (a name made at the start and let go at the end of the library's life is an engine call too late).
+struct VelKeys {
+	StringName parts, weapons, chain_head;
+	VelKeys() :
+			parts("parts"), weapons("weapons"), chain_head("chain_head") {}
+};
+const VelKeys &vel_keys() {
+	static const VelKeys *k = new VelKeys();
+	return *k;
+}
+
+// Whether the variant holds an object that is still there (the script's is_instance_valid).
+bool vel_valid(const Variant &v) {
+	if (v.get_type() != Variant::OBJECT) {
+		return false;
+	}
+	const ObjectID oid = v;
+	const uint64_t id = oid;
+	return id != 0 && UtilityFunctions::is_instance_id_valid((int64_t)id);
+}
+
+void vel_record(Dictionary &vel, const Variant &v) {
+	if (!vel_valid(v)) {
+		return;
+	}
+	RigidBody3D *b = Object::cast_to<RigidBody3D>(v);
+	if (b == nullptr) {
+		return;
+	}
+	Array a;
+	a.push_back(b->get_linear_velocity());
+	a.push_back(b->get_angular_velocity());
+	vel[(int64_t)b->get_instance_id()] = a;
+}
+
+// A weapon and, if it has one, its chain head: the bodies Combat.record_velocities takes of it.
+void vel_weapon(Dictionary &vel, const Variant &w) {
+	if (!vel_valid(w)) {
+		return;
+	}
+	Object *o = w;
+	if (o == nullptr) {
+		return;
+	}
+	vel_record(vel, w);
+	const Variant ch = o->get(vel_keys().chain_head);
+	if (vel_valid(ch)) {
+		vel_record(vel, ch);
+	}
+}
+} // namespace
+
+void VoxelCore::record_vel_all(const Array &fighters, const Array &loose, Dictionary vel) const {
+	const VelKeys &k = vel_keys();
+	const int64_t nf = fighters.size();
+	for (int64_t i = 0; i < nf; i++) {
+		const Variant fv = fighters[i];
+		if (!vel_valid(fv)) {
+			continue;
+		}
+		Object *f = fv;
+		const Array parts = f->get(k.parts);
+		const int64_t np = parts.size();
+		for (int64_t j = 0; j < np; j++) {
+			vel_record(vel, parts[j]);
+		}
+		const Dictionary weapons = f->get(k.weapons);
+		const Array ws = weapons.values();
+		const int64_t nw = ws.size();
+		for (int64_t j = 0; j < nw; j++) {
+			vel_weapon(vel, ws[j]);
+		}
+	}
+	const int64_t nl = loose.size();
+	for (int64_t i = 0; i < nl; i++) {
+		vel_weapon(vel, loose[i]);
 	}
 }

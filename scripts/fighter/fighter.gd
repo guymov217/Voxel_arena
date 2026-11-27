@@ -4835,6 +4835,17 @@ func _clip_arm_armor() -> void:
 				fresh.resize(ad.cells.size())
 				ad["clip"] = fresh
 			var clip: PackedByteArray = ad.clip
+			# (The plates whose clip is to change, named by the core as the loop below would find them: of the few it has anything to decide on, each was asked of the outline in script, thirteen thousand
+			# instructions a plate: a million a frame for eight men.)
+			if nc != null and Greedy.flip_ok and ad.xo.size() >= ad.on.size() and clip.size() >= ad.on.size():
+				for ci in nc.clip_plates_flip(to_t, ad.xo, ad.on, clip, box, ol, ol_pad):
+					var inside_now: bool = clip[ci] != 1
+					clip[ci] = 1 if inside_now else 0
+					var cxf_now := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO) if inside_now else p.drawn_plate(ad.xf[ci])
+					m.set_instance_transform(ci, cxf_now)
+					FineArmor.sync(ad, ci, cxf_now)
+				ad["clip"] = clip
+				continue
 			var turn: PackedInt32Array = nc.clip_plates(to_t, ad.xo, ad.on, clip, box) if nc != null else PackedInt32Array(range(ad.cells.size()))
 			for ci in turn:
 				if ad.on[ci] == 0:

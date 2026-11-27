@@ -21,13 +21,42 @@ func _ready() -> void:
 	var counts: bool = nc != null and nc.has_method("ir_select")
 	var say := OS.get_environment("IR_SAY") != ""
 	var hits := [0]
+	var said_us := [Time.get_ticks_usec()]
 	if say:
 		m.combat.hit.connect(func(_h): hits[0] += 1)
 	for s in at + (list.size() * per if not list.is_empty() else secs) + 1:
 		await get_tree().physics_frame
 		if say and s % 120 == 119:
 			var alive := m.entities.filter(func(e): return is_instance_valid(e.f) and e.f.alive)
-			print("IRSAY second %d: %d alive (%d foes), %d blows" % [s / 120, alive.size(), alive.filter(func(e): return int(e.team) == Match.ENEMY_TEAM).size(), hits[0]])
+			# (And what the fight has left on them and on the sand by then: the parts cut off, hanging and bleeding, the wounds' drips, the bodies awake.)
+			var cut := 0
+			var hang := 0
+			var bled := 0
+			var hurt := 0
+			var drips := 0
+			for e in m.entities:
+				if not is_instance_valid(e.f):
+					continue
+				for p in e.f.parts:
+					cut += 1 if p.severed else 0
+					hang += 1 if p.hanging else 0
+					bled += 1 if p.bleed > 0.0 or p.artery > 0.0 else 0
+					hurt += 1 if p.alive_count < p.fx.size() else 0
+					drips += p.drips.size() + p.spurts.size() + p.runs.size()
+			# (And the things lying about that every step asks of each: the items by kind, the debris chunks, the gut ropes.)
+			var kinds := {}
+			for it in m.items.list:
+				kinds[String(it.type) + (" grounded" if it.grounded else " flying")] = int(kinds.get(String(it.type) + (" grounded" if it.grounded else " flying"), 0)) + 1
+			var ropes := 0
+			for e in m.entities:
+				if is_instance_valid(e.f) and e.f.get("gut_rope") != null and is_instance_valid(e.f.gut_rope):
+					ropes += 1
+			print("IRSAY items %s; %d chunks; %d gut ropes" % [kinds, Chunk.all.size(), ropes])
+			var now_us := Time.get_ticks_usec()
+			print("IRSAY second %d: %d alive (%d foes), %d blows; parts cut off %d, hanging %d, bleeding %d, with voxels gone %d, drips and runs %d; %d nodes, %d bodies awake, %d pairs; the second took %d ms" % [s / 120, alive.size(),
+				alive.filter(func(e): return int(e.team) == Match.ENEMY_TEAM).size(), hits[0], cut, hang, bled, hurt, drips, int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+				int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)), int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS)), (now_us - said_us[0]) / 1000])
+			said_us[0] = now_us
 			hits[0] = 0
 		if not counts:
 			continue

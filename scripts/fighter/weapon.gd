@@ -8,6 +8,7 @@ extends RigidBody3D
 const CHIP_THRESHOLDS := [24.0, 44.0, 68.0]   # (20, 38, 60: blades chipped too easily: user)
 
 var design: Dictionary = {}
+var bow_geo: Array = []             # what a bow's drawing asks of its design's voxels, worked out once (Throwables._bow_geo)
 var stats: Dictionary = {}
 var vs := 0.04                     # voxel size (scaled)
 var vox: Array = []                # [x, y, z, mat, type]
@@ -1171,6 +1172,9 @@ static func box_low_y(xf: Transform3D, box: AABB) -> float:
 func _out_of_the_floor() -> void:
 	if freeze or vox.is_empty():
 		return
+	# (One nobody holds can only be put back through the floor's world layer it was taken out of, and is not under it unless it was: asked of the loose ones, a dozen a step, nothing.)
+	if holder == null and not _through_floor:
+		return
 	var low := box_low_y(global_transform, local_box())
 	var under := holder != null and low < -0.04
 	if under != _through_floor and (under or low > 0.02 or holder == null):
@@ -1327,7 +1331,9 @@ func _physics_process(dt: float) -> void:
 		guard_chain()
 	if thrown_t > 0.0:
 		thrown_t -= dt
-	_lie(dt)
+	# (Asleep and lying, nothing in _lie can change but the clock it has no more use of: it lies while it lies still, and while it does not it is awake.)
+	if not (_lying and holder == null and sleeping):
+		_lie(dt)
 	if own_t > 0.0:
 		own_t -= dt
 		if own_t <= 0.0 and holder == null:

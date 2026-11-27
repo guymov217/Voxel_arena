@@ -19,6 +19,9 @@ static var leg_ok := false   # and the end of a leg's step (VoxelCore.leg_tail)
 static var plant_ok := false  # and a standing leg's whole step (VoxelCore.leg_plant)
 static var ride_ok := false   # and the height his hips ride at over the ground (VoxelCore.ground_ride)
 static var bulk_ok := false   # and what is asked of every body in one go (VoxelCore.pack_parts, record_vel)
+static var cells_ok := false  # and a search of a part's voxels over the cells round the point only (VoxelCore.within_cells)
+static var flip_ok := false   # and the armour plates an arm's clip is to change, named in one call (VoxelCore.clip_plates_flip)
+static var vel_all_ok := false   # and the velocities of every body the combat lists, in one call (VoxelCore.record_vel_all)
 const DRIVE_API := 5   # the arguments the arms' and the legs' calls take, as this script hands them over (VoxelCore.drive_api: a library of another build is not asked)
 
 static func core() -> Object:
@@ -33,6 +36,9 @@ static func core() -> Object:
 			plant_ok = leg_ok and native.has_method("leg_plant")
 			ride_ok = leg_ok and native.has_method("ground_ride")
 			bulk_ok = native.has_method("pack_parts") and native.has_method("record_vel")
+			cells_ok = native.has_method("within_cells")
+			flip_ok = native.has_method("clip_plates") and native.has_method("clip_plates_flip")
+			vel_all_ok = bulk_ok and native.has_method("record_vel_all")
 		nc = native if use_native else null
 	return native if use_native else null
 

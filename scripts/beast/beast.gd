@@ -3139,6 +3139,7 @@ func _strike_go(p: VoxelPart) -> void:
 		var lo := lower_of(p)
 		if lo:
 			lo.def["bite"] = true
+			lo.strike_ok = -1   # (Combat._may_strike reads it)
 			lo.def["claw"] = SWIPERS.has(species) and species != "gorilla"
 			lo.def["fist"] = species == "gorilla"   # a punch, not a rake
 		# The ostrich kicks with a hop: both feet off the sand for the blow.
@@ -3226,6 +3227,7 @@ func _tick_strikes(dt: float) -> void:
 				var lo := lower_of(p)
 				if lo:
 					lo.def["bite"] = false
+					lo.strike_ok = -1
 					lo.def["claw"] = false
 					lo.set_meta("power", 1.0)
 

@@ -48,8 +48,9 @@ var enabled := true
 var chip_mult := 1.0             # Glass Weapons: every hit breaks something
 const TWO_HAND_BLOW := 1.2       # a blow with both hands on the haft, over one
 static var LODGE_K := 1.0        # how readily held blades stay in the wound (tests set it to 0 or 1e3)
-var touches := {}                # a beast's (a man's) id -> {the other's id -> {t, a: the toucher's part, b: the touched part, J, Jmax}}: whose body is on whom
+var touches := {}                # a beast's (a man's) id -> {the other's id -> [t, a: the toucher's part, b: the touched part, J, Jmax]}: whose body is on whom
 var touches_p := {}              # a part's id -> {the other man's id -> the same}: what one part is on (a forearm, a beast's part)
+# (A note is a list of five, not a table of five names: it is written over a hundred times a step in a melee, and a list's places are a fifth of a table's keys to write.)
 # (By the two ids, one table in another: they were one table by a key spelt out of the two ("12:34", "p12:34"), and the spelling was most of what a note cost.)
 
 ## The last touch of any part of `a` on any part of `b` within `within` seconds: the victim's
@@ -60,9 +61,9 @@ func touch_part(a, b, within := 0.25) -> VoxelPart:
 		return null
 	var row = touches.get(a.get_instance_id())
 	var r = row.get(b.get_instance_id()) if row != null else null
-	if r == null or time - float(r.t) > within:
+	if r == null or time - float(r[0]) > within:
 		return null
-	return r.b if is_instance_valid(r.b) else null
+	return r[2] if is_instance_valid(r[2]) else null
 
 func touching(a, b, within := 0.25) -> bool:
 	return touch_part(a, b, within) != null
@@ -73,9 +74,9 @@ func touch_by(part: VoxelPart, b, within := 0.25) -> VoxelPart:
 		return null
 	var row = touches_p.get(part.get_instance_id())
 	var r = row.get(b.get_instance_id()) if row != null else null
-	if r == null or time - float(r.t) > within:
+	if r == null or time - float(r[0]) > within:
 		return null
-	return r.b if is_instance_valid(r.b) else null
+	return r[2] if is_instance_valid(r[2]) else null
 
 ## The impulse the physics put through the touch of `a` on `b` this step (N·s, summed over
 ## their contacts): the weight and the drive actually bearing on him, for what a squeeze, a
@@ -85,9 +86,9 @@ func touch_impulse(a, b, within := 0.25) -> float:
 		return 0.0
 	var row = touches.get(a.get_instance_id())
 	var r = row.get(b.get_instance_id()) if row != null else null
-	if r == null or time - float(r.t) > within:
+	if r == null or time - float(r[0]) > within:
 		return 0.0
-	return float(r.J)
+	return float(r[3])
 
 ## Whether anyone ever asks what this part touched. touch_part, touching and touch_impulse are asked of a beast (its hug, its coil, its stomp, what it gripped), touch_by of a
 ## beast's part or of a forearm (the hand that grabs is on its forearm: Social.nearest_part). Of a man's thigh on another man's shin nobody asks, and those are nearly all of a
@@ -103,7 +104,19 @@ static func _asked(p: VoxelPart) -> bool:
 ## Whether this part can ever be the one that lands a blow on another's part (process_contacts lets go of a touch of two parts neither of which can): cut off (a club, perhaps),
 ## a striking part, a jaw, a point, a tusk.
 static func _may_strike(p: VoxelPart) -> bool:
-	return p.severed or STRIKING.has(p.part_name) or p.def.get("bite", false) or p.def.get("point", false) or _tusk(p)
+	if p.severed:
+		return true
+	var k: int = p.strike_ok
+	if k < 0:
+		k = _strike_static(p)
+	return k == 1
+
+## What of _may_strike does not change as a man is hurt (a striking part, a jaw, a point, a tusk), told of a part once: its `strike_ok`, let go again where a beast gives a part a bite.
+## (Asked of every touch of every part, a dozen reads of other objects each: a tenth of a melee's step.)
+static func _strike_static(p: VoxelPart) -> int:
+	var k := 1 if (STRIKING.has(p.part_name) or p.def.get("bite", false) or p.def.get("point", false) or _tusk(p)) else 0
+	p.strike_ok = k
+	return k
 
 func _note_touch(a: VoxelPart, b: VoxelPart, J: float) -> void:
 	var fa = a.fighter
@@ -117,28 +130,55 @@ func _note_touch(a: VoxelPart, b: VoxelPart, J: float) -> void:
 		_note(touches, fa.get_instance_id(), fbid, a, b, J)
 	_note(touches_p, a.get_instance_id(), fbid, a, b, J)
 
+## _note_touch of two parts whose men are known to be two different men, and the first part one somebody asks about (report knows all of that).
+func _note_on(a: VoxelPart, b: VoxelPart, fa, fb, J: float) -> void:
+	var fbo: Object = fb   # (the ids asked of them as the objects they are: at a sixth of the cost)
+	var fbid := fbo.get_instance_id()
+	if fa is Beast:
+		var fao: Object = fa
+		_note(touches, fao.get_instance_id(), fbid, a, b, J)
+	# (_note's lines for the table a melee writes a hundred times a step, here and not a call away.)
+	var ao: Object = a
+	var pid := ao.get_instance_id()
+	var row = touches_p.get(pid)
+	if row == null:
+		row = {}
+		touches_p[pid] = row
+	var r = row.get(fbid)
+	if r == null:
+		row[fbid] = [time, a, b, J, J]
+	elif float(r[0]) == time:
+		r[3] += J
+		if J > float(r[4]):
+			r[4] = J; r[1] = a; r[2] = b
+	else:
+		r[0] = time; r[1] = a; r[2] = b; r[3] = J; r[4] = J
+
 func _note(tab: Dictionary, ka: int, kb: int, a: VoxelPart, b: VoxelPart, J: float) -> void:
 	var row = tab.get(ka)
 	if row == null:
 		row = {}
 		tab[ka] = row
 	var r = row.get(kb)
-	if r != null and float(r.t) == time:
-		r.J += J   # another contact of the same step: the impulses add up
-		if J > float(r.get("Jmax", 0.0)):
-			r.Jmax = J; r.a = a; r.b = b   # the hardest contact names the parts
+	if r == null:
+		row[kb] = [time, a, b, J, J]
+	elif float(r[0]) == time:
+		r[3] += J   # another contact of the same step: the impulses add up
+		if J > float(r[4]):
+			r[4] = J; r[1] = a; r[2] = b   # the hardest contact names the parts
 	else:
-		row[kb] = {"t": time, "a": a, "b": b, "J": J, "Jmax": J}
+		# (The pair's first contact of this step: its record is written over, not made afresh.)
+		r[0] = time; r[1] = a; r[2] = b; r[3] = J; r[4] = J
 
-## Every note there is, as [of one part (true) or of a whole body (false), the note]: for the tests that look at what was noted.
+## Every note there is, as [of one part (true) or of a whole body (false), the note {t, a, b, J, Jmax}]: for the tests that look at what was noted.
 func touch_notes() -> Array:
 	var out := []
 	for row in touches.values():
 		for r in row.values():
-			out.append([false, r])
+			out.append([false, {"t": r[0], "a": r[1], "b": r[2], "J": r[3], "Jmax": r[4]}])
 	for row in touches_p.values():
 		for r in row.values():
-			out.append([true, r])
+			out.append([true, {"t": r[0], "a": r[1], "b": r[2], "J": r[3], "Jmax": r[4]}])
 	return out
 
 func _enter_tree() -> void:
@@ -176,16 +216,21 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 	if not (bw or bp):
 		return
 	var bf = body.fighter if bp else null
-	# (A part's man is told what presses on him in this same pass, the combat on or not: `told` while he still may be.)
-	var told: bool = bp and bf != null and is_instance_valid(bf) and "struck_frame" in bf
+	# (A part's man is told what presses on him in this same pass, the combat on or not: `told` while he still may be. A man is a Fighter, a beast one too: the only ones with a struck_frame.)
+	var told: bool = bp and bf != null and is_instance_valid(bf) and bf is Fighter
 	if not enabled:
 		if told:
 			_struck_only(bf, state)
 		return
-	var bid := body.get_instance_id()
+	var bobj: Object = body   # (the ids asked of the bodies as the objects they are: at a sixth of the cost)
+	var bid := bobj.get_instance_id()
 	var holder = body.holder if bw else null
-	# (Whether anybody may ask who touched this part, and whether it may land a blow: asked of it only by a touch that gets as far as needing to know,
-	# -1 until then. Most bodies with a contact have the sand under them and their own man's parts beside them, every step.)
+	# (What is read of the body is read once, not at every touch: whether it is cut off, whether its man is dead, how big he is. Whether anybody may ask who touched this part, and
+	# whether it may land a blow, is asked of it only by a touch that gets as far as needing to know, -1 until then. Most bodies with a contact have the sand under them and their own
+	# man's parts beside them, every step.)
+	var b_sev: bool = body.severed if bp else false
+	var b_dead := -1
+	var giant_s := -1.0
 	var b_asked := -1
 	var b_strikes := -1
 	for i in state.get_contact_count():
@@ -196,19 +241,21 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 		var ow := not op and other is Weapon
 		if not (op or ow):
 			continue
+		var of = other.fighter if op else null   # (the other part's man, read once of the five times it was)
 		if told:
 			if ow:
 				if other.holder != null and other.holder != bf:
 					bf.struck_frame = Engine.get_physics_frames()
 					told = false
-			else:
-				var of = other.fighter
-				if of != null and of != bf:
-					# (Fighter.is_giant_over, else is_beast_on, in their own lines: the two were called for every touch of another man's part, and of two men neither is so.)
-					if of is Beast:
-						if not (bf is Beast) and not (of.hug != null and of.hug.get("target") == bf) and not (bf.has_meta("beast_hold") and bf.get_meta("beast_hold") == of):
-							bf.beast_frame = Engine.get_physics_frames()
-					elif float(of.S) > float(bf.S) * Fighter.GIANT_OVER:
+			elif of != null and of != bf:
+				# (Fighter.is_giant_over, else is_beast_on, in their own lines: the two were called for every touch of another man's part, and of two men neither is so.)
+				if of is Beast:
+					if not (bf is Beast) and not (of.hug != null and of.hug.get("target") == bf) and not (bf.has_meta("beast_hold") and bf.get_meta("beast_hold") == of):
+						bf.beast_frame = Engine.get_physics_frames()
+				else:
+					if giant_s < 0.0:
+						giant_s = float(bf.S) * Fighter.GIANT_OVER
+					if float(of.S) > giant_s:
 						bf.struck_frame = Engine.get_physics_frames()
 						told = false
 		if bp:
@@ -219,22 +266,38 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 					pending.append([other, body, state.get_contact_collider_shape(i), state.get_contact_local_shape(i), state.get_contact_local_position(i), state.get_contact_impulse(i).length()])
 				continue
 			# (A limb cut off is a club, even in the hands of the man it came off.)
-			if bf != null and other.fighter == bf and not body.severed and not other.severed:
+			if bf != null and of == bf and not b_sev and not other.severed:
 				continue
 			# The parts of two fallen men against each other (a heap of the dead is a hundred such contacts a step, each
 			# seen from both sides): nobody asks who touched whom among the dead (a hold, a squeeze or a stomp is the
 			# living's), and a blow wants a living hand (process_contacts lets go of it): nothing to note, let go at once.
-			if bf != null and other.fighter != null and not bf.alive and not other.fighter.alive and not body.severed and not other.severed:
-				continue
+			if bf != null and of != null:
+				if b_dead < 0:
+					b_dead = 0 if bf.alive else 1
+				if b_dead == 1 and not of.alive and not b_sev and not other.severed:
+					continue
 			# (Noted only where somebody may ask (_asked), kept only where one of the two may land a blow (_may_strike): the rest, which is most of a melee, is let go here.)
 			if b_asked < 0:
 				b_asked = 1 if bf != null and _asked(body) else 0
-			var noted: bool = b_asked == 1 or (other.fighter != null and _asked(other))
+			var noted: bool = b_asked == 1
+			var oa := -1   # (whether the other part is one somebody asks about: read at most once)
+			if not noted and of != null:
+				oa = other.touch_asked
+				if oa < 0:
+					oa = 1 if _asked(other) else 0
+				noted = oa == 1
 			var kept := false
-			if bid <= other.get_instance_id():
+			var oobj: Object = other
+			if bid <= oobj.get_instance_id():
 				if b_strikes < 0:
 					b_strikes = 1 if _may_strike(body) else 0
-				kept = b_strikes == 1 or _may_strike(other)
+				if b_strikes == 1:
+					kept = true
+				else:
+					var ks: int = other.strike_ok
+					if ks < 0:
+						ks = _strike_static(other)
+					kept = ks == 1 or other.severed
 			if not (noted or kept):
 				continue
 			var cj := state.get_contact_impulse(i).length()
@@ -243,19 +306,24 @@ func report(body: RigidBody3D, state: PhysicsDirectBodyState3D) -> void:
 					touch_q.append([body, other, cj])
 				else:
 					# (Each way only where the part is one somebody asks about: _note_touch lets go of the other at once, and was called to do it.)
-					if b_asked == 1:
-						_note_touch(body, other, cj)
-					var o_asked: int = other.touch_asked
-					if o_asked == 1 or (o_asked < 0 and other.fighter != null and _asked(other)):
-						_note_touch(other, body, cj)
+					if b_asked == 1 and of != null and of != bf:
+						_note_on(body, other, bf, of, cj)
+					if oa < 0:
+						oa = other.touch_asked
+						if oa < 0 and of != null:
+							oa = 1 if _asked(other) else 0
+					if oa == 1 and of != null and bf != null and of != bf:
+						_note_on(other, body, of, bf, cj)
 			if not kept:
 				continue
 			pending.append([body, other, state.get_contact_local_shape(i), state.get_contact_collider_shape(i), state.get_contact_local_position(i), cj])
 		else:
-			if op and holder != null and other.fighter == holder:
+			if op and holder != null and of == holder:
 				continue   # a weapon on the man holding it
-			if ow and bid > other.get_instance_id():
-				continue
+			if ow:
+				var oobj: Object = other
+				if bid > oobj.get_instance_id():
+					continue
 			pending.append([body, other, state.get_contact_local_shape(i), state.get_contact_collider_shape(i), state.get_contact_local_position(i), state.get_contact_impulse(i).length()])
 
 ## A weapon lying loose (dropped, thrown, left by the dead) that has lain still a spell is put to sleep, and again each step it is
@@ -296,6 +364,14 @@ func record_velocities() -> void:
 	vel.clear()
 	# (Every body's two velocities in one call of the C++ core, the bodies in the order the lines below take them: the same entries.)
 	var nc := Greedy.core()
+	if nc != null and Greedy.vel_all_ok:
+		# (The list of bodies made and recorded in the core: the same bodies, each fighter's parts, the weapons in his hands and their chain heads, then the loose ones.)
+		for w in loose_weapons:
+			if not is_instance_valid(w):
+				loose_weapons = loose_weapons.filter(func(x): return is_instance_valid(x))
+				break
+		nc.record_vel_all(fighters, loose_weapons, vel)
+		return
 	if nc != null and Greedy.bulk_ok:
 		var bodies := []
 		for f in fighters:
@@ -410,7 +486,7 @@ func process_contacts(_dt: float) -> Array:
 		var att_shape := -1
 		if a is Weapon and b is VoxelPart:
 			att = a; vic = b; att_shape = c[2]
-		elif a is VoxelPart and b is VoxelPart and (_is_club(a) or _is_club(b)):
+		elif a is VoxelPart and b is VoxelPart and (a.severed or b.severed) and (_is_club(a) or _is_club(b)):   # (a club is cut off: two reads before the two calls)
 			# A severed limb swung or thrown like a club.
 			if _is_club(a) and not _is_club(b):
 				att = a; vic = b
@@ -421,37 +497,47 @@ func process_contacts(_dt: float) -> Array:
 			if vic.fighter == att.wielder or vic.fighter == att.thrown_by:
 				continue
 		elif a is VoxelPart and b is VoxelPart:
-			if a.fighter == b.fighter:
+			# (Each man read once of the many times he was: the two parts' men, then the attacker's and the victim's.)
+			var a_man = a.fighter
+			var b_man = b.fighter
+			if a_man == b_man:
 				continue
+			var af = a_man
+			var vf = b_man
 			var sa := _lin(a).length()
 			var sb := _lin(b).length()
 			if sa >= sb:
 				att = a; vic = b
 			else:
 				att = b; vic = a
+				af = b_man; vf = a_man
 			# A tusk the head drives in a strike is the blow, whatever moves the faster (a man
 			# flung back off it moved faster than it, and the gore was read as him bumping into it).
-			if _tusk(vic) and vic.fighter.strikes_with(vic):
+			if vf is Beast and _tusk(vic) and vf.strikes_with(vic):
 				var was = att
 				att = vic
 				vic = was
-			if not (STRIKING.has(att.part_name) or att.def.get("bite", false) or att.def.get("point", false) or _tusk(att)):
+				var was_f = af
+				af = vf
+				vf = was_f
+			var bite: bool = att.def.get("bite", false)
+			if not (STRIKING.has(att.part_name) or bite or att.def.get("point", false) or (af is Beast and _tusk(att))):
 				continue
 			# Jaws cut off or hacked away bite nothing (a crocodile's closed on whatever touched
 			# them, its jaw gone or not).
-			if att.def.get("bite", false) and not att.can_bite():
+			if bite and not att.can_bite():
 				continue
-			if att.fighter.state != "stand" or not att.fighter.alive or att.severed:
+			if af.state != "stand" or not af.alive or att.severed:
 				continue
 			# The man a giant holds is not struck by his holder: what the arm does to him is the hold, the
 			# slam and the throw (Social). (Brought into the fist, the man hung in the swinging arm was
 			# beaten by it, forearm and trunk, before he was ever thrown.)
-			var held = att.fighter.holding
-			if held != null and held.get("target") != null and held.target.f == vic.fighter:
+			var held = af.holding
+			if held != null and held.get("target") != null and held.target.f == vf:
 				continue
 			# (Nor the man he has just let go of, while the arm is still following through: he leaves the
 			# hand with the speed it gave him, and the landing is what hurts him.)
-			if vic.fighter.thrown_by == att.fighter and vic.fighter.thrown_t > Social.THROW_CLEAR:
+			if vf.thrown_by == af and vf.thrown_t > Social.THROW_CLEAR:
 				continue
 			# A beast's jaws, claws and horns bite only in a strike (the snap of the jaws, the
 			# swipe, the toss: Beast.strikes, telegraphed by the wind-up before it): a head that
@@ -461,27 +547,28 @@ func process_contacts(_dt: float) -> Array:
 			# (A crocodile's too. Its jaws closed on whatever touched them, and grown to stand as
 			# high as a man's hands they touched his arms all the time: near forty bites in half a
 			# minute, both arms gone before he had kicked it five times, user.)
-			if att.fighter is Beast and not att.fighter.strikes_with(att):
+			if af is Beast and not af.strikes_with(att):
 				continue
-			if att.fighter.kind != "beast" and not att.def.get("bite", false):
+			if af.kind != "beast" and not bite:
 				var n: String = att.part_name
-				if n.begins_with("shin") and not att.fighter.kick_strike():
+				if n.begins_with("shin") and not af.kick_strike():
 					continue
-				var own: float = (_lin(att) - _lin(att.fighter.torso)).length()
-				# A fist strikes while it is thrown or swung (Fighter.fist_strike), not whenever it
-				# moves: drawn in, on its way home, or flung aside by a blow it is a touch.
+				# (How fast the part goes against his trunk: asked of a fist and a head only, not of a kick.)
 				if n.begins_with("forearm"):
-					var fs: int = att.fighter.fist_strike(n.right(1))
-					if fs == 0 or own < (1.5 if fs == 2 else 2.5):
+					# A fist strikes while it is thrown or swung (Fighter.fist_strike), not whenever it
+					# moves: drawn in, on its way home, or flung aside by a blow it is a touch.
+					var fs: int = af.fist_strike(n.right(1))
+					if fs == 0 or (_lin(att) - _lin(af.torso)).length() < (1.5 if fs == 2 else 2.5):
 						continue
 				# (Nor is a head rocked by the blow it has just taken a butt at the man who dealt it.)
-				if n == "head" and (own < 3.0 or att.fighter.daze_t > 0.0):
+				if n == "head" and ((_lin(att) - _lin(af.torso)).length() < 3.0 or af.daze_t > 0.0):
 					continue
 		else:
 			continue
 		# A shell laid over skin that no collider of his reaches (FineBody shells) is a blow on the part whose
 		# flesh that skin lies on, which is where it is cut.
-		vic = vic.host_part(int(c[3]) if vic == b else int(c[2]))
+		if not vic.skin_shapes.is_empty():
+			vic = vic.host_part(int(c[3]) if vic == b else int(c[2]))   # (a part with no shells laid over it is its own host)
 		if vic.severed and not vic.fighter.alive and att is VoxelPart:
 			continue
 		# (The pair as the two ids: it was a string spelt out of them for every contact, eighty a step in a melee. The groups keep the order they were first met in.)

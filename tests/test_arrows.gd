@@ -487,3 +487,70 @@ func test_a_stronger_archers_arrow_strikes_harder() -> void:
 		t.check(absf(k - 1.15 * 1.2) < 0.02, "the strong man's arrow lands %.2f times as hard (a half of his 30 per cent of strength and all of his 20 of Ictus: 1.38)" % k)
 		t.check(float(js[v1]) > 15.0 and float(js[v1]) < 17.0, "and a plain man's is what it was (%.1f)" % float(js[v1]))
 	m.queue_free()
+
+## What the bow's drawing asks of its design's voxels (Throwables._bow_geo, kept on the bow: it was worked out over every voxel each step of a bowman) is the very numbers the old lines gave:
+## the span of the pull, the lowest and the highest height of the leather behind the stave and how far back it reaches; the same answer again without working it out; and worked out anew
+## for a design that is another (a voxel more or less, another array).
+func test_a_bows_drawing_asks_the_same_of_its_design_as_the_lines_over_every_voxel_did() -> void:
+	var m := _match()
+	var bad := []
+	var seen := 0
+	var leathers := 0
+	for i in 3:
+		var designs := [Data.preset("bow"), Data.preset("crossbow"), Data.preset("flamePole")]
+		var d: Dictionary = designs[i]
+		var e = m.spawn_fighter({"kind": "bot", "name": "B%d" % i, "loadout": {"main": ["bow", "crossbow", "flamePole"][i]}, "team": 1, "pos": Vector3(-6.0 + 6.0 * i, 0, 4.0), "yaw": 0.0})
+		e.erase("bot")
+		e.drive = func(_e): return {}
+		var w: Weapon = e.f.weapons.R
+		if w == null:
+			bad.append("no weapon %d" % i)
+			continue
+		var want := _bow_lines(w)
+		var g: Array = m.throwables._bow_geo(w)
+		var vs: float = w.vs
+		var got := [int(g[2]), g[3] * vs, g[4] * vs, float(g[5]) * vs]
+		if got != want:
+			bad.append("%s: %s, not %s" % [w.design.get("name", "?"), str(got), str(want)])
+		seen += 1
+		if float(g[5]) < 0.0:
+			leathers += 1
+		# (The same answer again: the very array.)
+		if not is_same(m.throwables._bow_geo(w), g):
+			bad.append("not kept")
+		# (A voxel more: the answer is worked out anew, as the lines give it.)
+		var vx: Array = w.design.voxels
+		vx.append([-7, 30, 0, "leather", "grip"])
+		var want2 := _bow_lines(w)
+		var g2: Array = m.throwables._bow_geo(w)
+		var got2 := [int(g2[2]), g2[3] * vs, g2[4] * vs, float(g2[5]) * vs]
+		if got2 != want2 or got2 == got:
+			bad.append("a voxel more: %s, not %s (was %s)" % [str(got2), str(want2), str(got)])
+		# (Another design altogether.)
+		w.design["voxels"] = [[0, 0, 0, "wood", "grip"], [0, 9, 0, "wood", "blunt"], [-3, 4, 0, "leather", "grip"], [-5, 6, 0, "leather", "grip"]]
+		var g3: Array = m.throwables._bow_geo(w)
+		t.check(int(g3[2]) == 9 and g3[3] == 4 and g3[4] == 6 and float(g3[5]) == -5.0, "another design, other numbers (%s)" % str(g3.slice(1)))
+		w.design["voxels"] = [[0, 0, 0, "wood", "grip"], [0, 9, 0, "wood", "blunt"]]
+		var g4: Array = m.throwables._bow_geo(w)
+		t.check(int(g4[2]) == 9 and g4[3] == 2 and g4[4] == 18 and float(g4[5]) == 0.0, "and with no leather, the string's ends where the old lines had them (%s)" % str(g4.slice(1)))
+	t.check(bad.is_empty(), "the numbers the old lines gave (unlike: %s)" % str(bad))
+	t.check(seen == 3 and leathers >= 1, "what was asked covers the cases (%d weapons, %d with leather behind the stave)" % [seen, leathers])
+	m.queue_free()
+
+## The old lines of _draw_bow and _show_draw over every voxel of the design: [the span of the heights, the string's low end, its high end, how far back it goes].
+func _bow_lines(w: Weapon) -> Array:
+	var ys := []
+	for v in w.design.voxels:
+		ys.append(v[1])
+	var span: int = int(ys.max()) - int(ys.min())
+	var ys2 := []
+	var sx := 0.0
+	for v in w.design.voxels:
+		if v[3] == "leather" and v[0] < 0:
+			ys2.append(v[1])
+			sx = minf(sx, v[0])
+	var vs: float = w.vs
+	var y0: float = (ys2.min() if not ys2.is_empty() else 2) * vs
+	var y1: float = (ys2.max() if not ys2.is_empty() else 18) * vs
+	sx *= vs
+	return [span, y0, y1, sx]

@@ -493,6 +493,7 @@ func blood_at(p: Vector3, size: float, angle := -1.0, stretch := 1.0, cap := 1.5
 	d.size = Vector3(s, d.size.y, s)
 	d.global_position = Vector3(lerpf(d.global_position.x, p.x, k), d.global_position.y, lerpf(d.global_position.z, p.z, k))
 	best.t = 0.0
+	d.modulate = Color(0.45, 0.02, 0.02, 0.92)   # (wet again, red at once: its colour is set from its age only a quarter of a second at a time, _process)
 
 ## A print pressed into the sand (drawing only): `kind` "footL", "footR", "peg" (a peg leg's
 ## round mark) or "drag" (a body dragged: a furrow along `yaw`, `length` long); `scale` the man's
@@ -622,17 +623,23 @@ func _process(dt: float) -> void:
 			dd.modulate.a = float(pr.a) * fade
 			keep.append(pr)
 		prints = keep
-	# Blood dries: from red to the brown of old blood over a minute and a half.
-	for mk in marks:
-		if mk.kind != "blood" or mk.t > 90.0:
-			continue
-		mk.t += dt
-		var d: Decal = mk.d
-		if is_instance_valid(d):
-			var k := clampf(mk.t / 90.0, 0.0, 1.0)
-			d.modulate = Color(0.45, 0.02, 0.02, 0.92).lerp(Color(0.24, 0.06, 0.03, 0.85), k)
+	# Blood dries: from red to the brown of old blood over a minute and a half. (A quarter of a second at a time, as the prints: a colour that moves a sixtieth of its way in that
+	# is not seen to move, and every mark of a fight's hundred and eighty was set its colour every frame, a million instructions a step: `blood_at` makes a pool wet again at once.)
+	_dry_t += dt
+	if _dry_t >= 0.25:
+		var step := _dry_t
+		_dry_t = 0.0
+		for mk in marks:
+			if mk.kind != "blood" or mk.t > 90.0:
+				continue
+			mk.t += step
+			var d: Decal = mk.d
+			if is_instance_valid(d):
+				var k := clampf(mk.t / 90.0, 0.0, 1.0)
+				d.modulate = Color(0.45, 0.02, 0.02, 0.92).lerp(Color(0.24, 0.06, 0.03, 0.85), k)
 
 var _print_t := 0.0
+var _dry_t := 0.0
 
 func clear() -> void:
 	for mk in marks:
