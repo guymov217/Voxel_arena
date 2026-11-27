@@ -709,7 +709,11 @@ settings; the guest is told it as he comes in, with a `room` message from the ho
   again) takes a new number and begins everyone anew: the host's `new_run` word (the same group of friends: its slot goes on under
   the new number). A party meets a few more of the bout's men (or its beast) than one man does, on every card of the gate: one more for two or three players,
   two more for four, and never more than six foes in all, the second wave counted (`Data.PARTY_EXTRA`, `PARTY_FOES_MAX`); a boss
-  is alone, tougher for each friend (`Data.duel`).
+  is alone, and every friend more makes the bout's foes a little harder (user, #347: `Data.duel`, `tests/test_party_scaling.gd`): a
+  boss 35% tougher and 8% stronger than itself, its blows landing 10% harder (`Fighter.foe_dmg`, read in `Combat._blow`) and its wits
+  5% keener (a man's `Bot.diff`, a beast's `Beast.skill`, how soon it strikes again), and every other foe, the second wave's too, 4%
+  harder in its blows and 3% keener. (A boss's health and strength used to be written over its own, so that the giant, the troll
+  and the titan met a pair of friends weaker than one man: they are multiplied into it now, a beast boss's as a man's.)
 
   **One campaign for each group of friends.** The host plays it with different friends at different times, and each group has its
   own: how far it has got (the `coop_` keys of the save: the bout, the lap, the checkpoint, how death is dealt with, the gate's wins,

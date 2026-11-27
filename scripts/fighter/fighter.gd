@@ -94,6 +94,7 @@ var is_bot := false
 var face_ids: Array = []          # his eyes, mouth, face paint, hair and eye colour as he chose them (Physique.FACES), drawing only
 var kind := "fighter"
 var mods := {"bodyScale": 1.0, "strength": 1.0, "speed": 1.0, "toughness": 1.0, "bleed": 1.0, "accel": 1.0, "unstoppable": false, "drunk": 0.0}
+var foe_dmg := 1.0   # his blows land this much harder (a foe of a party's bout: Data.duel's party_dmg, read in Combat._blow)
 var S := 1.0
 var MS := 1.0
 var build_pref := ""   # the build he chose to be drawn in (Your gladiator; Physique.build_of)

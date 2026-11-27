@@ -826,6 +826,8 @@ func _fighter_in(f: Fighter, spec: Dictionary) -> Dictionary:
 		spec["wreath"] = true
 	if spec.get("wreath") is bool and bool(spec.wreath):
 		f.set_wreath(true)
+	if spec.kind == "bot":
+		f.foe_dmg = clampf(float(spec.get("foe_dmg", 1.0)), 1.0, 3.0)   # (a party's foe lands harder: Data.duel)
 	var e := {"id": spec.get("id", next_id), "f": f, "kind": spec.kind, "team": spec.team, "peer": spec.get("peer", -1), "boss": spec.get("boss", false), "spec": spec}
 	next_id = maxi(next_id, e.id) + 1
 	if spec.kind == "bot":
@@ -946,6 +948,14 @@ func _beast_in(b: Beast, spec: Dictionary) -> Dictionary:
 		sfx("thump", bb.torso.global_position, 1.0)
 	if role == "guest":
 		b.make_puppet()
+	# A party's bout (Data.duel): a boss tougher and stronger for each friend, and every foe's blows harder and wits keener (a beast's skill is how soon it strikes again).
+	if spec.get("hp_k") != null:
+		b.mods.toughness = float(b.mods.get("toughness", 1.0)) * clampf(float(spec.hp_k), 1.0, 4.0)
+	if spec.get("str_k") != null:
+		b.mods.strength = float(b.mods.get("strength", 1.0)) * clampf(float(spec.str_k), 1.0, 4.0)
+	b.foe_dmg = clampf(float(spec.get("foe_dmg", 1.0)), 1.0, 3.0)
+	if spec.get("skill_k") != null:
+		b.skill = clampf(b.skill * clampf(float(spec.skill_k), 1.0, 1.5), 0.0, 1.0)
 	var e := {"id": spec.get("id", next_id), "f": b, "kind": "beast", "team": spec.team, "peer": -1, "boss": spec.get("boss", false), "spec": spec, "harmless": spec.get("harmless", false)}
 	next_id = maxi(next_id, e.id) + 1
 	_register(e)
@@ -1164,7 +1174,9 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	var pos := Vector3(gx * (Arena.RADIUS - depth), 0.1, (0.6 if row % 2 else -0.6) if total > 2 else 0.0)
 	if en.has("beast"):
 		var sc: float = float(en.scale) if en.get("scale") != null else float(Data.beasts.get(en.beast, {}).get("scale", 1.0))
-		return {"kind": "beast", "beast": en.beast, "scale": sc * (1.0 + LAP_SCALE * (lap - 1)), "name": en.get("name", Data.beasts.get(en.beast, {}).get("name", en.beast)), "boss": en.get("boss", false), "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z)}
+		# (A party's bout, Data.duel: the boss's health and strength, a beast's as a man's, and every foe's damage and wits.)
+		return {"kind": "beast", "beast": en.beast, "scale": sc * (1.0 + LAP_SCALE * (lap - 1)), "name": en.get("name", Data.beasts.get(en.beast, {}).get("name", en.beast)), "boss": en.get("boss", false), "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z),
+			"hp_k": float(en.get("party_hp", 1.0)), "str_k": float(en.get("party_str", 1.0)), "foe_dmg": float(en.get("party_dmg", 1.0)), "skill_k": float(en.get("party_skill", 1.0))}
 	var t := Data.enemy_type(en.get("e", "recruit"))
 	var g: Dictionary = en.get("gear", {}) if en.get("gear") else {}
 	var los: Array = t.get("loadouts", [{"main": "gladius"}])
@@ -1222,8 +1234,13 @@ func enemy_spec(en: Dictionary, i: int, total: int) -> Dictionary:
 	if lap > 1:
 		mods["toughness"] = float(mods.get("toughness", 1.0)) * (1.0 + LAP_TOUGH * (lap - 1))
 		mods["strength"] = float(mods.get("strength", 1.0)) * (1.0 + 0.1 * (lap - 1))
+	# A party's boss: tougher and stronger than himself for each friend (Data.duel), not instead of what he is.
+	if en.has("party_hp"):
+		mods["toughness"] = float(mods.get("toughness", 1.0)) * float(en.party_hp)
+		mods["strength"] = float(mods.get("strength", 1.0)) * float(en.get("party_str", 1.0))
 	var spec := {"kind": "bot", "name": nm, "loadout": {"main": main, "off": off, "armor": armor}, "team": ENEMY_TEAM, "pos": pos, "yaw": atan2(-pos.x, -pos.z), "mods": mods,
-		"personality": t.get("personality", "standard"), "diff": float(t.get("diff", 0.8)) * float(g.get("diff", 1.0)) * (ladder_skill(stage) if ladder else 1.0), "color": t.get("color"), "boss": en.get("boss", false)}
+		"personality": t.get("personality", "standard"), "diff": float(t.get("diff", 0.8)) * float(g.get("diff", 1.0)) * (ladder_skill(stage) if ladder else 1.0) * float(en.get("party_skill", 1.0)), "color": t.get("color"), "boss": en.get("boss", false),
+		"foe_dmg": float(en.get("party_dmg", 1.0))}
 	# The giants of myth look the part (MonsterLook): one eye, a bull's head, tusks, a crown.
 	var look := MonsterLook.look_of(String(en.get("e", "")))
 	if look != "":

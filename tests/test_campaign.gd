@@ -196,7 +196,7 @@ func test_a_party_meets_a_few_more_foes_not_one_for_every_friend_and_bosses_come
 	t.eq(Data.stage(5, 3).late.size(), 1, "the second wave comes as authored, for a party as for one")
 	var boss := Data.stage(4, 3)
 	t.eq(boss.rounds[0].size(), 1, "a boss comes alone")
-	t.check(float(boss.rounds[0][0].mods.toughness) > float(Data.stage(4, 1).rounds[0][0].get("mods", {}).get("toughness", 1.0)), "and tougher for a party")
+	t.check(float(boss.rounds[0][0].get("party_hp", 1.0)) > float(Data.stage(4, 1).rounds[0][0].get("party_hp", 1.0)), "and tougher for a party")
 
 ## Four at most fight the co-op campaign; the room, and every other fight in it, takes eight
 ## (user). With a fifth in the room the campaign's buttons are held back, the reason under them,
@@ -739,7 +739,7 @@ func test_a_party_has_the_better_of_it() -> void:
 	t.eq(count.call(Data.stage(2, 3)), 2, "three players: still two, not three")
 	t.eq(count.call(Data.stage(2, 4)), 3, "four players: three, not four")
 	var boss3: Dictionary = Data.stage(8, 3).rounds[0][0]
-	t.check(is_equal_approx(float(boss3.mods.toughness), 1.0 + 0.35 * 2), "a boss for three is 70%% tougher (%.2f)" % float(boss3.mods.toughness))
+	t.check(is_equal_approx(float(boss3.party_hp), 1.0 + 0.35 * 2), "a boss for three is 70%% tougher (%.2f)" % float(boss3.party_hp))
 	t.eq(Data.stage(8, 4).rounds[0].size(), 1, "and a boss is alone for four")
 	t.eq(Data.stage(3, 3).rounds[0].size(), 2, "a beast's bout for three: two of them")
 

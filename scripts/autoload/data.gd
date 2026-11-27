@@ -98,6 +98,15 @@ func stage(n: int, players: int = 1, bout: int = 0, crowd := false) -> Dictionar
 ## comes alone, the tougher for each friend. The second wave comes as authored, for a party as for one man.
 const PARTY_EXTRA := [0, 1, 1, 2]   # foes a party adds to the bout's own, by its players (one to four)
 const PARTY_FOES_MAX := 6           # the most foes a party meets, the second wave counted
+## What every player more makes a bout's foes harder (user, #347: a boss a little harder for each, mainly in health, skill and damage; the bout's ordinary foes a little too, in damage and
+## skill, not much). A boss: `BOSS_HEALTH` tougher (Fighter.mods.toughness, a man's and a beast's alike) and `BOSS_STRENGTH` stronger (both multiplied into its own), its blows landing `BOSS_DAMAGE` harder (Fighter.foe_dmg)
+## and its wits `BOSS_SKILL` keener (a man's Bot.diff, a beast's Beast.skill); any other foe, the second wave's too, only the last two, by `FOE_DAMAGE` and `FOE_SKILL`.
+const BOSS_HEALTH := 0.35
+const BOSS_STRENGTH := 0.08
+const BOSS_DAMAGE := 0.10
+const BOSS_SKILL := 0.05
+const FOE_DAMAGE := 0.04
+const FOE_SKILL := 0.03
 func duel(st: Dictionary, players := 1) -> Dictionary:
 	var n := int(st.get("n", 1))
 	var b := Ladder.bout(int(st.get("bout", n)))
@@ -116,16 +125,22 @@ func duel(st: Dictionary, players := 1) -> Dictionary:
 	var boss: bool = foes.any(func(f): return f.get("boss", false))
 	if players > 1 and boss:
 		for f in foes:
-			var m: Dictionary = f.get("mods", {}).duplicate()
-			# (A party has the better of a boss: tougher for each friend, but not by a whole man.)
-			m["toughness"] = float(m.get("toughness", 1.0)) * (1.0 + 0.35 * (players - 1))
-			m["strength"] = float(m.get("strength", 1.0)) * (1.0 + 0.08 * (players - 1))
-			f["mods"] = m
+			# (A party has the better of a boss: tougher for each friend, but not by a whole man. Told as what it is tougher and stronger BY, which the match
+			# multiplies into the boss's own, a man's or a beast's: it was written over them as a toughness and a strength of its own, and the giant, the troll and the
+			# titan came to a pair of friends weaker than to one man.)
+			f["party_hp"] = 1.0 + BOSS_HEALTH * (players - 1)
+			f["party_str"] = 1.0 + BOSS_STRENGTH * (players - 1)
 	elif players > 1:
 		var own := foes.size()
 		var extra := mini(int(PARTY_EXTRA[clampi(players, 1, PARTY_EXTRA.size()) - 1]), maxi(0, PARTY_FOES_MAX - own - late.size()))
 		for i in extra:
 			foes.append((foes[i % own] as Dictionary).duplicate(true))
+	# Every foe of a party's bout, the second wave's too, lands a little harder and thinks a little keener for each friend (a boss more than the rest).
+	if players > 1:
+		for f in foes + late:
+			var is_boss: bool = bool(f.get("boss", false))
+			f["party_dmg"] = 1.0 + (BOSS_DAMAGE if is_boss else FOE_DAMAGE) * (players - 1)
+			f["party_skill"] = 1.0 + (BOSS_SKILL if is_boss else FOE_SKILL) * (players - 1)
 	st["rounds"] = [foes]
 	st["late"] = late
 	st["duel"] = true
