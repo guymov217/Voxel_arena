@@ -742,9 +742,22 @@ func show_try_result(t: Dictionary, who: String) -> void:
 
 func _cards_ui() -> void:
 	mode_box.add_child(UIStyle.label("1 · PICK A BASE", 13, UIStyle.BRONZE))
+	# The smith's wares first, as he makes them (user: the same weapons here as at the smith's), then the simple bases, which take every twist.
 	var grid := GridContainer.new()
 	grid.columns = 3
 	mode_box.add_child(grid)
+	for w in Arms.bases():
+		var key: String = ForgeLib.WARE_PREFIX + String(w.key)
+		var b := UIStyle.button(Loc.t(String(w.name)), func(): _pick_base(key))
+		b.tooltip_text = Loc.t("The smith's own, as he makes it: put a twist on it, or shape it by hand.")
+		b.toggle_mode = true
+		b.button_pressed = key == base_key
+		b.custom_minimum_size = Vector2(135, 0)
+		grid.add_child(b)
+	mode_box.add_child(UIStyle.label("or a simple one, with every twist", 13, UIStyle.MUTED))
+	var simple := GridContainer.new()
+	simple.columns = 3
+	mode_box.add_child(simple)
 	for k in ForgeLib.BASES:
 		var key: String = k
 		var b := UIStyle.button(ForgeLib.BASES[k].label, func(): _pick_base(key))
@@ -752,7 +765,7 @@ func _cards_ui() -> void:
 		b.toggle_mode = true
 		b.button_pressed = key == base_key
 		b.custom_minimum_size = Vector2(135, 0)
-		grid.add_child(b)
+		simple.add_child(b)
 	if base_key == "":
 		return
 	mode_box.add_child(UIStyle.label(Loc.t("2 · ADD UP TO %d TWISTS") % ForgeLib.MAX_PICKS, 13, UIStyle.BRONZE))
@@ -781,7 +794,7 @@ func _cards_ui() -> void:
 		cards.add_child(b)
 	var row := HBoxContainer.new()
 	row.add_child(UIStyle.button("Deal again", func():
-		dealt = ForgeLib.deal_modifiers(base_key, rng)
+		dealt = _deal()
 		picks = picks.filter(func(p): return dealt.has(p))
 		_from_cards()
 		_show_mode("cards")))
@@ -806,16 +819,24 @@ func _blank() -> void:
 	_rebuild()
 	_show_mode("voxels")
 
-## The weapon these cards would make (the same dice for a silly base, so the arrows compare).
+## The weapon these cards would make (the same dice for a silly base, so the arrows compare): the smith's own with the twists that go on it as it is, or a simple one built to them.
 func _trial(mods: Array, seed_: int) -> Dictionary:
+	if ForgeLib.is_ware(base_key):
+		return ForgeLib.build_from_ware(base_key.substr(ForgeLib.WARE_PREFIX.length()), mods)
 	var r := RandomNumberGenerator.new()
 	r.seed = seed_
 	return ForgeLib.build_from_cards(base_key, mods, r)
 
+## The twists dealt for the base in hand.
+func _deal() -> Array:
+	if ForgeLib.is_ware(base_key):
+		return ForgeLib.deal_ware_twists(base_key.substr(ForgeLib.WARE_PREFIX.length()), rng)
+	return ForgeLib.deal_modifiers(base_key, rng)
+
 func _pick_base(k: String) -> void:
 	base_key = k
 	picks = []
-	dealt = ForgeLib.deal_modifiers(k, rng)
+	dealt = _deal()
 	rng.seed = randi()
 	_from_cards()
 	_show_mode("cards")

@@ -1161,6 +1161,66 @@ func test_every_material_swatch_fits_the_panel() -> void:
 		await get_tree().process_frame
 	Loc.apply(was)
 
+## Quick start offers the smith's wares (user: the same weapons there as at the smith's), each on the anvil as he makes it, with the twists that go on a weapon as it stands.
+func test_quick_start_offers_the_smiths_wares_as_he_makes_them() -> void:
+	var f = load("res://scripts/ui/forge.gd").new()
+	add_child(f)
+	f.free_build = true
+	f.open(Data.preset("gladius").duplicate(true), 0, func(_d, _c): pass)
+	f._show_mode("cards")
+	await get_tree().process_frame
+	var names := []
+	var stack := [f.mode_box]
+	while not stack.is_empty():
+		var c: Node = stack.pop_back()
+		for k in c.get_children():
+			stack.append(k)
+		if c is Button and (c as Button).toggle_mode:
+			names.append((c as Button).text)
+	t.check(Arms.bases().size() >= 16, "the smith sells %d wares" % Arms.bases().size())
+	for w in Arms.bases():
+		t.check(names.has(Loc.t(String(w.name))), "Quick start has the smith's %s" % w.name)
+	t.check(names.has("Spatha") and names.has("Something silly"), "and the simple bases are still there (%d buttons)" % names.size())
+	for w in Arms.bases():
+		var key: String = w.key
+		f._pick_base(ForgeLib.WARE_PREFIX + key)
+		var want: Dictionary = Data.preset(key)
+		t.check(f.cells.size() == (want.voxels as Array).size() and f.name_edit.text == String(want.name), "%s: the smith's own on the anvil (%d blocks of %d, %s)" % [key, f.cells.size(), (want.voxels as Array).size(), f.name_edit.text])
+		t.check(f.dealt.size() >= 1 and f.dealt.all(func(k): return ForgeLib.WARE_TWISTS.has(k) and ForgeLib.mod_fits(k, String(ForgeLib.WARE_FAMILY[key]))), "%s: twists that go on it as it is (%s)" % [key, str(f.dealt)])
+	f._pick_base("w:trident")
+	if f.dealt.has("razor"):
+		f._toggle_pick("razor")
+		t.check(f.design.has("sharpness") and is_equal_approx(float(f.design.sharpness), 1.0), "a twist picked goes on the weapon on the anvil (%s)" % str(f.picks))
+	f._pick_base("axe")
+	t.check(not ForgeLib.is_ware(f.base_key) and f.dealt.size() >= 3, "and a simple base still deals its twists (%s)" % str(f.dealt))
+	f.queue_free()
+	await get_tree().process_frame
+
+func test_twists_on_a_ware_change_only_what_can_be_changed() -> void:
+	var base: Dictionary = Data.preset("trident")
+	var plain := ForgeLib.build_from_ware("trident", [])
+	t.check(plain.voxels.size() == base.voxels.size() and plain.name == "Trident" and not plain.has("stats"), "no twist: the trident as it is (%d blocks, %s)" % [plain.voxels.size(), plain.name])
+	var razor := ForgeLib.build_from_ware("trident", ["razor"])
+	t.check(is_equal_approx(float(razor.sharpness), 1.0) and razor.voxels.size() == base.voxels.size() and String(razor.name).begins_with("Razor"), "razor: the keenest edge, the same blocks (%s, %.2f)" % [razor.name, float(razor.sharpness)])
+	var two := ForgeLib.build_from_ware("gladius", ["twoHanded", "serrated"])
+	t.check(bool(two.twoHanded) and bool(two.get("serrated", false)), "two hands and teeth are what it is marked with")
+	var gold := ForgeLib.build_from_ware("mace", ["gold"])
+	var iron_left: int = gold.voxels.filter(func(v): return v[3] == "iron").size()
+	var gold_n: int = gold.voxels.filter(func(v): return v[3] == "gold").size()
+	var wood_n: int = gold.voxels.filter(func(v): return v[3] == "wood").size()
+	t.check(iron_left == 0 and gold_n >= 80 and wood_n == 15, "gold: the iron head is gold, the wooden handle stays (%d gold, %d iron, %d wood)" % [gold_n, iron_left, wood_n])
+	var arrows := ForgeLib.build_from_ware("bow", ["fireArrows"])
+	t.check(String(arrows.get("gem", "")) == "fire", "a bow's fire arrows")
+	t.check(ForgeLib.build_from_ware("gladius", ["longer", "heavyHead", "spikes"]).voxels.size() == Data.preset("gladius").voxels.size(), "a twist that reshapes (longer, heavier, spiked) is not put on one")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	for w in Arms.bases():
+		var key: String = w.key
+		var deal := ForgeLib.deal_ware_twists(key, rng)
+		t.check(deal.size() >= 1 and deal.all(func(k): return ForgeLib.WARE_TWISTS.has(k)), "%s: dealt only twists that go on it (%s)" % [key, str(deal)])
+		var d := ForgeLib.build_from_ware(key, deal.slice(0, 2))
+		t.check(ForgeLib.compute_stats(d).hasGrip and d.voxels.size() == Data.preset(key).voxels.size(), "%s with %s is a weapon you can hold" % [key, str(deal.slice(0, 2))])
+
 ## The durability bar beside the four (user: how long a weapon lasts): the harder its stuff the
 ## longer, a brittle one shatters, a tiny one has little to lose before it is spent.
 func test_the_durability_bar_follows_what_it_is_made_of() -> void:

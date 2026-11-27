@@ -494,6 +494,11 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   *Pin it* keeps the weapon as it is (`Forge.pinned`, for as long as the game runs; a card in My designs pins that design): the bars carry
   a white mark where the pinned weapon's stand and, at the right, the per cent each figure is over or under it (and the weight in
   kilos), all the time; the ▲ and ▼ at the bars' end still show what the last change did.
+- **Quick start's bases are the smith's wares** (user: the same weapons in Quick start as at the smith's; `tests/test_forge.gd`). Every ware he sells (`Arms.bases()`) is a button
+  of the forge's first step, on the anvil exactly as he makes it (`ForgeLib.build_from_ware`; a base's key there is `w:` and the ware's), with the twists that go on a finished weapon
+  (`ForgeLib.WARE_TWISTS`: a razor edge, teeth, two hands, a throw, a head of gold or stone, a bow's arrows; `WARE_FAMILY` says what fits which) and not those that reshape one.
+  The simple bases (Spatha, a throwing axe, something silly...) follow under their own line and take every twist, as they always did. The lobby's forge and the smith's are the one
+  class (`scripts/ui/forge.gd`); the flags (`workshop`, `free_build`, `scratch`) change only the price lines and the buttons under them.
 - **Armour at the forge**: *taken down for now* (`Armory.plate_bench_open` is false: the forge's
   Armour tab, the smith's "Shape it plate by plate", training's and the contest's bench are not
   shown; every line of it is still here, and a test that goes in sets the switch). The forge's

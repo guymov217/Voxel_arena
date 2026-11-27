@@ -1039,8 +1039,8 @@ static func apply_mod(key: String, p: Dictionary) -> Dictionary:
 	return o
 
 ## `n` cards that fit the base: mostly sensible ones, then a wild one.
-static func deal_modifiers(base: String, rng: RandomNumberGenerator, n := 5) -> Array:
-	var fit: Array = MODIFIERS.keys().filter(func(k): return mod_fits(k, base) and not SET_ASIDE.has(k))
+static func deal_modifiers(base: String, rng: RandomNumberGenerator, n := 5, only := []) -> Array:
+	var fit: Array = MODIFIERS.keys().filter(func(k): return mod_fits(k, base) and not SET_ASIDE.has(k) and (only.is_empty() or only.has(k)))
 	var sane: Array = fit.filter(func(k): return not WILD.has(k))
 	var odd: Array = fit.filter(func(k): return WILD.has(k))
 	var draw := func(pool: Array, k: int) -> Array:
@@ -1071,6 +1071,43 @@ static func cards_name(label: String, mods: Array) -> String:
 		if one.length() <= 32:
 			return one
 	return label.substr(0, 32)
+
+## The smith's wares as Quick start's bases (user: the same weapons in Quick start as at the smith's): the weapon as he makes it (a base's key in the forge is "w:" and the ware's), with the twists that can be put
+## on a weapon as it stands (an edge honed to a razor, teeth, two hands, a throw, a head of gold or of stone, a bow's arrows) and not those that reshape it (longer, heavier, spiked...). `WARE_FAMILY` says which
+## of the simple bases' kinds each is, for what fits it.
+const WARE_PREFIX := "w:"
+const WARE_FAMILY := {"gladius": "gladius", "longsword": "spatha", "zweihander": "spatha", "falx": "gladius", "axe": "axe", "executionerAxe": "axe", "mace": "mace", "warhammer": "hammer", "hammer": "hammer",
+	"spear": "spear", "trident": "spear", "dagger": "dagger", "javelin": "javelin", "bow": "bow", "roundShield": "shield", "scutum": "shield"}
+const WARE_TWISTS := ["razor", "serrated", "twoHanded", "throwable", "gold", "stone", "fireArrows", "poisonArrows", "iceArrows"]
+
+static func is_ware(base_key: String) -> bool:
+	return base_key.begins_with(WARE_PREFIX)
+
+## The twists dealt for a ware (`ware` is its key in the shop, no prefix).
+static func deal_ware_twists(ware: String, rng: RandomNumberGenerator, n := 5) -> Array:
+	return deal_modifiers(String(WARE_FAMILY.get(ware, "gladius")), rng, n, WARE_TWISTS)
+
+## The ware as the smith makes it, with the twists put on it: a razor edge is the sharpest, teeth, two hands and a throw are what the weapon is marked with, a head of another stuff is the steel, iron and stone blocks
+## of the head and blade of that stuff (the grip, the shaft and the guard stay), arrows are a bow's. Its price is the smith's own for what it has become (Arms.design_price).
+static func build_from_ware(ware: String, mod_keys: Array, name := "") -> Dictionary:
+	var d: Dictionary = Data.preset(ware).duplicate(true)
+	d.erase("stats")
+	var mods: Array = mod_keys.filter(func(k): return WARE_TWISTS.has(k) and MODIFIERS.has(k)).slice(0, MAX_PICKS)
+	for k in mods:
+		var set: Dictionary = MODIFIERS[k].get("set", {})
+		for s in set:
+			match String(s):
+				"sharp": d.sharpness = float(set[s])
+				"serrated": d.serrated = true
+				"twoHanded": d.twoHanded = true
+				"throwable": d.throwable = true
+				"gem": d.gem = set[s]
+				"mat":
+					for v in d.voxels:
+						if (v[4] == "edge" or v[4] == "point" or v[4] == "blunt") and (v[3] == "steel" or v[3] == "iron" or v[3] == "stone"):
+							v[3] = set[s]
+	d.name = name if name != "" else cards_name(Loc.t(str(Data.preset(ware).get("name", ware))), mods)
+	return d
 
 static func build_from_cards(base_key: String, mod_keys: Array, rng: RandomNumberGenerator, name := "") -> Dictionary:
 	var base: Dictionary = BASES.get(base_key, BASES.gladius)

@@ -9402,5 +9402,11 @@
 ],
 "%s kicks (and stamps on a man who is down), %s shoves. Hold %s for a hard kick to the belly: it wounds and throws a man back. Kick or shove the dummy.": [
 "scripts/game/tutorial.gd:22"
+],
+"or a simple one, with every twist": [
+"scripts/ui/forge.gd:757"
+],
+"The smith's own, as he makes it: put a twist on it, or shape it by hand.": [
+"scripts/ui/forge.gd:752"
 ]
 }
