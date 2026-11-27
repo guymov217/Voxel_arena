@@ -475,7 +475,7 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   the room throws no shadow. A wall, or the roof, is put away while the camera is out beyond it
   (backed off from a long weapon it looks into the room as into a doll's house), and a thing on
   the floor while the camera is in it or it stands before the anvil (`tests/test_forge.gd`).
-- **The forge's Select tool, pin and rating** (`tests/test_forge_select.gd`, `test_forge_pin.gd`, `test_forge_rating.gd`, `test_weapon_rating.gd`; user, #353 to #356).
+- **The forge's Select tool and pin** (`tests/test_forge_select.gd`, `test_forge_pin.gd`; user, #353 and #354; the weapon's rating by duels, #355, was taken out again at the user's word).
   *Select* (V) picks blocks: a click picks one, a dragged box every block whose middle lies in it (the ones behind too), Shift adds,
   Ctrl takes away, a double-click picks the whole part (the blocks of one stuff and job joined face to face), the right button lets
   go. What is picked can be moved (the six arrows, or the arrow keys and Page Up and Down while the mouse is over the anvil; Shift:
@@ -494,16 +494,6 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   *Pin it* keeps the weapon as it is (`Forge.pinned`, for as long as the game runs; a card in My designs pins that design): the bars carry
   a white mark where the pinned weapon's stand and, at the right, the per cent each figure is over or under it (and the weight in
   kilos), all the time; the ▲ and ▼ at the bars' end still show what the last change did.
-  *Rate it* fights the weapon (`WeaponRating`, `RatingRunner`): a bot with it, at a set skill, duels three standard gladiators (bare,
-  armoured, a champion) six bouts each, in a headless game of its own that the forge starts (`-- --rate job.json`, a core and about a
-  gigabyte for a minute or two) and reads from a file as the bouts end, so the forge's own frames are untouched; Stop, or leaving the
-  forge, ends it. A bout scores by its result and the share of the harm done that the weapon dealt; the weapon's score is ranked among
-  the arsenal's own, rated the same way (`data/weapon_ratings.json`, made again by `sh tools/rate_presets.sh` after a change to the
-  battery, to a weapon, to how a man fights or to the physics: a test holds the table to the battery's stamp, nothing else says that
-  it is old). The table is made on one worker thread, where the same bouts come out the same every time (`override.cfg` while the
-  script runs, as the tests); a forged weapon is rated on the player's own threads, whose order changes from run to run, so the same
-  weapon can come out a couple of points either way (18 bouts keep it to about two). A rating is of the weapon it was made for
-  (`WeaponRating.key`): changed on the anvil, it says it is of the weapon as it was. A shield or a bow is not rated.
 - **Armour at the forge**: *taken down for now* (`Armory.plate_bench_open` is false: the forge's
   Armour tab, the smith's "Shape it plate by plate", training's and the contest's bench are not
   shown; every line of it is still here, and a test that goes in sets the switch). The forge's

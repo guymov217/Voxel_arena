@@ -14,11 +14,6 @@ func _ready() -> void:
 		path = "user://test_save.json"
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 		return
-	# A rating's bouts (RatingRunner) play on a save of their own, gone when they end: never on the player's.
-	if args.has("--rate"):
-		path = "user://rate_%d.json" % OS.get_process_id()
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
-		return
 	# A friend who is not there (Friends, FriendPilot: a game the host's opens to try a room with) plays on a save of his own,
 	# new each time, never on the player's.
 	if args.has("--friend"):

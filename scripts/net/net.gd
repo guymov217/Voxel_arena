@@ -141,9 +141,6 @@ func _init_steam() -> void:
 	# A friend who is not there (Friends) joins by address and has no Steam: the player's Steam is the host's alone.
 	if OS.get_cmdline_user_args().has("--friend"):
 		return
-	# Nor does the game that fights a rating's bouts for the forge (RatingRunner): the player's Steam is the game's he plays.
-	if OS.get_cmdline_user_args().has("--rate"):
-		return
 	if not Engine.has_singleton("Steam"):
 		return
 	steam = Engine.get_singleton("Steam")

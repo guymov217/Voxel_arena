@@ -9255,47 +9255,6 @@
 "scripts/ui/forge.gd:1295",
 "scripts/ui/forge.gd:1371"
 ],
-"RATING": [
-"scripts/ui/forge.gd:2190"
-],
-"Rate it": [
-"scripts/ui/forge.gd:2193"
-],
-"Fight it: a bot with this weapon duels standard gladiators (%d bouts, a few minutes) and it is ranked among the arsenal's weapons, which were rated the same way. It goes on in the background: go on forging.": [
-"scripts/ui/forge.gd:2194"
-],
-"Stop": [
-"scripts/ui/forge.gd:2196"
-],
-"Rating: bout %d of %d": [
-"scripts/ui/forge.gd:2229"
-],
-"The rating failed: %s": [
-"scripts/ui/forge.gd:2231"
-],
-"The rating stopped before it was done": [
-"scripts/ui/forge.gd:2231",
-"scripts/ui/forge.gd:2313"
-],
-"For the weapon as it was, not as it is now: rate it again": [
-"scripts/ui/forge.gd:2235"
-],
-"Rated %d out of 100": [
-"scripts/ui/forge.gd:2237"
-],
-"Won %d of %d bouts · dealt %d damage, took %d": [
-"scripts/ui/forge.gd:2238"
-],
-"Better than %d of the arsenal's %d weapons": [
-"scripts/ui/forge.gd:2241"
-],
-"Between the %s and the %s": [
-"scripts/ui/forge.gd:2243"
-],
-"The rating could not be started": [
-"scripts/ui/forge.gd:2272",
-"scripts/ui/forge.gd:2283"
-],
 "Move the picked blocks left  [←]": [
 "scripts/ui/forge.gd:2368"
 ],
@@ -9386,21 +9345,6 @@
 ],
 "That will not fit on the anvil": [
 "scripts/ui/forge.gd:2573"
-],
-"There is nothing to rate yet": [
-"scripts/game/weapon_rating.gd:50"
-],
-"Duels are fought with a weapon in the hand: a shield is not rated": [
-"scripts/game/weapon_rating.gd:52"
-],
-"Duels are fought with a weapon in the hand: a bow is not rated": [
-"scripts/game/weapon_rating.gd:54"
-],
-"The weapon would not do": [
-"scripts/game/rating_runner.gd:39"
-],
-"The rating was cut short": [
-"scripts/game/rating_runner.gd:47"
 ],
 "Mirror: off": [
 "scripts/ui/forge.gd:1118"

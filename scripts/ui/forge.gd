@@ -46,15 +46,6 @@ static var pinned := {}
 var pin_button: Button
 var undo_button: Button
 var redo_button: Button
-## The ratings made while the game runs, by the weapon's key (WeaponRating.key): what the anvil shows again when the same weapon comes back to it.
-static var rated := {}
-var rating := {}                # the rating under way, or the last made: {key, pid, job, out, state ("running", "done", "failed"), done, of, t, result}
-var rating_button: Button
-var rating_stop: Button
-var rating_label: Label
-var rating_strip: Control
-var rate_alive := Callable()    # whether the game that fights the bouts is still there (a test's own answer; else the system's)
-const RATE_POLL_S := 0.5        # how often the game that fights the bouts is asked how far it is (s)
 var sel := {}                          # the Select tool's pick: Vector3i -> true (what Move, Turn, Flip and Make work on)
 var sel_mi: MultiMeshInstance3D = null # its tint on the weapon
 var sel_drag := {}                     # a box being dragged over the view: {from, to, moved, add, sub}
@@ -623,8 +614,6 @@ func _show_mode(m: String) -> void:
 			_gallery_ui()
 		_:
 			_voxels_ui()
-	if m != "gallery":
-		_rating_ui()
 	ghost.visible = false
 	turn_ghost.visible = false
 	line_from = null
@@ -1592,7 +1581,6 @@ func _update_texts() -> void:
 		elif c.has_meta("sharp_none"):
 			c.visible = not sharp
 	_price_badge()
-	_rating_refresh(d, st)
 
 ## What the weapon on the anvil comes to, spelled out: what it is made of and the smith's work,
 ## what is paid now, and what is left in the purse after (or how much is missing).
@@ -1907,11 +1895,6 @@ func _process(dt: float) -> void:
 	if texts_due:
 		texts_due = false
 		_update_texts()
-	if rating.get("state", "") == "running":
-		rating["t"] = float(rating.get("t", 0.0)) + dt
-		if float(rating.t) >= RATE_POLL_S:
-			rating["t"] = 0.0
-			_rate_poll()
 	if sel_mi and is_instance_valid(sel_mi):
 		sel_mi.visible = tool == "select"   # (the pick is shown while the tool is in hand)
 	if bars and Time.get_ticks_msec() / 1000.0 - stat_t < DELTA_HOLD + 0.7:
@@ -2307,185 +2290,6 @@ func _remove(list: Array) -> void:
 		cost_label.text = Loc.t("Cut through: %d blocks fall away") % (cells.size() - keep.size())
 		cells = kept
 	_rebuild()
-
-# ---------- The weapon's rating: duels against standard foes, ranked among the arsenal's ----------
-
-## The rating's place at the foot of what is made on the anvil: a button to rate the weapon, how far the bouts have got, and what they came to.
-func _rating_ui() -> void:
-	mode_box.add_child(HSeparator.new())
-	mode_box.add_child(UIStyle.label("RATING", 13, UIStyle.BRONZE))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	rating_button = UIStyle.button("Rate it", _rate_start)
-	rating_button.tooltip_text = Loc.t("Fight it: a bot with this weapon duels standard gladiators (%d bouts, a few minutes) and it is ranked among the arsenal's weapons, which were rated the same way. It goes on in the background: go on forging.") % WeaponRating.battery().size()
-	row.add_child(rating_button)
-	rating_stop = UIStyle.button("Stop", _rate_stop)
-	row.add_child(rating_stop)
-	mode_box.add_child(row)
-	rating_label = UIStyle.label("", 14, UIStyle.TEXT)
-	rating_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	mode_box.add_child(rating_label)
-	rating_strip = RatingStrip.new()
-	rating_strip.custom_minimum_size = Vector2(380, 38)
-	mode_box.add_child(rating_strip)
-	_rating_refresh()
-
-## What the rating's place says, from what the rating is: nothing yet, under way, made (for this weapon or one it was), or not made.
-func _rating_refresh(d: Dictionary = {}, st: Dictionary = {}) -> void:
-	if rating_label == null or not is_instance_valid(rating_label) or rating_button == null or not is_instance_valid(rating_button):
-		return
-	if d.is_empty():
-		d = _design_now()
-	# A weapon rated before, in this game, comes back to the anvil with its rating.
-	if rating.is_empty() and not rated.is_empty() and not (d.voxels as Array).is_empty():
-		var seen := WeaponRating.key(d)
-		if rated.has(seen):
-			rating = (rated[seen] as Dictionary).duplicate(true)
-	var state := str(rating.get("state", ""))
-	var running := state == "running"
-	var why := WeaponRating.unrateable(d, st)
-	rating_button.disabled = running or why != ""
-	rating_stop.visible = running
-	var lines := []
-	var res: Dictionary = rating.get("result", {})
-	# A rating of the weapon that is on the anvil, or of one it has been changed from.
-	var mine := not rating.is_empty() and not d.is_empty() and (d.voxels as Array).size() > 0 and str(rating.get("key", "")) == WeaponRating.key(d)
-	var shown := false
-	if running:
-		lines.append(Loc.t("Rating: bout %d of %d") % [mini(int(rating.get("done", 0)) + 1, int(rating.get("of", 1))), int(rating.get("of", 1))])
-	elif state == "failed":
-		lines.append(Loc.t("The rating failed: %s") % Loc.t(str(res.get("error", "The rating stopped before it was done"))))
-	elif state == "done" and res.get("summary") is Dictionary:
-		shown = true
-		if not mine:
-			lines.append(Loc.t("For the weapon as it was, not as it is now: rate it again"))
-		var sm: Dictionary = res.summary
-		lines.append(Loc.t("Rated %d out of 100") % roundi(float(sm.score)))
-		lines.append(Loc.t("Won %d of %d bouts · dealt %d damage, took %d") % [int(floor(float(sm.won))), int(sm.of), int(sm.dmg), int(sm.taken)])
-		var rk: Dictionary = res.get("rank", {})
-		if not rk.is_empty():
-			lines.append(Loc.t("Better than %d of the arsenal's %d weapons") % [int(rk.better), int(rk.of)])
-			if String(rk.below) != "" and String(rk.above) != "":
-				lines.append(Loc.t("Between the %s and the %s") % [Loc.t(str(Data.presets.get(String(rk.below), {}).get("name", rk.below))), Loc.t(str(Data.presets.get(String(rk.above), {}).get("name", rk.above)))])
-	if lines.is_empty() and why != "":
-		lines.append(Loc.t(why))
-	rating_label.text = "\n".join(lines)
-	rating_label.add_theme_color_override("font_color", UIStyle.GOLD if shown and mine else UIStyle.TEXT)
-	var strip := rating_strip as RatingStrip
-	if strip:
-		strip.arsenal = WeaponRating.scores()
-		strip.score = float((res.get("summary", {}) as Dictionary).get("score", -1.0)) if shown else -1.0
-		strip.stale = shown and not mine
-		strip.visible = shown and not strip.arsenal.is_empty()
-		strip.queue_redraw()
-
-## Start the game that fights the bouts: the weapon as it is on the anvil, written to a job file, a headless game (this one's own executable) told to do it, the answer read from a file as it comes.
-func _rate_start() -> void:
-	if str(rating.get("state", "")) == "running":
-		return
-	var d := _design_now()
-	var why := WeaponRating.unrateable(d)
-	if why != "":
-		cost_label.text = why
-		return
-	var dir := ProjectSettings.globalize_path("user://rating")
-	DirAccess.make_dir_recursive_absolute(dir)
-	var id := "%d_%d" % [OS.get_process_id(), Time.get_ticks_msec()]
-	var job_path := dir.path_join("job_%s.json" % id)
-	var out_path := dir.path_join("out_%s.json" % id)
-	var f := FileAccess.open(job_path, FileAccess.WRITE)
-	if f == null:
-		cost_label.text = "The rating could not be started"
-		return
-	f.store_string(JSON.stringify({"design": d, "out": out_path}))
-	f.close()
-	var args := PackedStringArray(["--headless", "--fixed-fps", "120"])
-	if OS.has_feature("editor"):
-		args.append_array(["--path", ProjectSettings.globalize_path("res://")])   # (a game run from the editor's own program has to be told where it is)
-	args.append_array(["--", "--rate", job_path])
-	var pid := OS.create_process(OS.get_executable_path(), args)
-	if pid <= 0:
-		DirAccess.remove_absolute(job_path)
-		cost_label.text = "The rating could not be started"
-		return
-	rating = {"key": WeaponRating.key(d), "pid": pid, "job": job_path, "out": out_path, "state": "running", "done": 0, "of": WeaponRating.battery().size(), "t": 0.0, "result": {}}
-	_rating_refresh(d)
-
-## The rating given up on (the button, or the forge closing): the game that fights it is ended and its files go.
-func _rate_stop() -> void:
-	if str(rating.get("state", "")) != "running":
-		return
-	if int(rating.get("pid", 0)) > 0 and _rate_running(int(rating.pid)):
-		OS.kill(int(rating.pid))
-	_rate_files_away()
-	rating = {}
-	_rating_refresh()
-
-## How far the bouts have got, from the file the other game writes; done, failed, or gone without a word.
-func _rate_poll() -> void:
-	var res := {}
-	var out_path := str(rating.get("out", ""))
-	if out_path != "" and FileAccess.file_exists(out_path):
-		res = WeaponRating.clean_result(JSON.parse_string(FileAccess.get_file_as_string(out_path)))
-	if res.get("state", "") == "done" or res.get("state", "") == "failed":
-		_rate_finish(res)
-	elif not _rate_running(int(rating.get("pid", 0))):
-		# (It may have written its last words between the two looks.)
-		if out_path != "" and FileAccess.file_exists(out_path):
-			var last := WeaponRating.clean_result(JSON.parse_string(FileAccess.get_file_as_string(out_path)))
-			if last.state == "done" or last.state == "failed":
-				_rate_finish(last)
-				return
-		_rate_finish({"state": "failed", "error": "The rating stopped before it was done", "bouts": []})
-	else:
-		if not res.is_empty():
-			rating["done"] = int(res.done)
-			rating["of"] = maxi(int(res.of), int(rating.get("of", 0)))
-		_rating_refresh()
-
-func _rate_finish(res: Dictionary) -> void:
-	rating["state"] = str(res.get("state", "failed"))
-	rating["result"] = res
-	rating["done"] = int(res.get("done", 0))
-	_rate_files_away()
-	if rating.state == "done":
-		rated[str(rating.key)] = rating.duplicate(true)
-	_rating_refresh()
-
-func _rate_running(pid: int) -> bool:
-	if rate_alive.is_valid():
-		return bool(rate_alive.call(pid))
-	return pid > 0 and OS.is_process_running(pid)
-
-func _rate_files_away() -> void:
-	for k in ["job", "out"]:
-		var p := str(rating.get(k, ""))
-		if p != "" and FileAccess.file_exists(p):
-			DirAccess.remove_absolute(p)
-
-## The arsenal's scores as ticks on a line, 0 to 100, and the weapon's own as a gold mark under it.
-class RatingStrip extends Control:
-	var arsenal: Array = []
-	var score := -1.0
-	var stale := false
-
-	func _draw() -> void:
-		if arsenal.is_empty() or score < 0.0:
-			return
-		var font := UIStyle.serif(1)
-		var w := size.x - 2.0
-		var y0 := 4.0
-		draw_rect(Rect2(1, y0, w, 12), Color(0, 0, 0, 0.5))
-		for sc in arsenal:
-			var x := 1.0 + w * clampf(float(sc) / 100.0, 0.0, 1.0)
-			draw_rect(Rect2(x - 0.5, y0 + 1, 1.5, 10), Color(UIStyle.MUTED, 0.75))
-		var x := 1.0 + w * clampf(score / 100.0, 0.0, 1.0)
-		var c := UIStyle.MUTED if stale else UIStyle.GOLD
-		draw_rect(Rect2(x - 1.5, y0 - 3, 3, 18), c)
-		draw_colored_polygon(PackedVector2Array([Vector2(x, y0 + 16), Vector2(x - 5, y0 + 23), Vector2(x + 5, y0 + 23)]), c)
-		var t := "%d" % roundi(score)
-		var tw := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
-		draw_string(font, Vector2(clampf(x - tw * 0.5, 0.0, size.x - tw), y0 + 36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, c)
 
 # ---------- Picked blocks: the Select tool ----------
 
@@ -2917,6 +2721,5 @@ func _take() -> void:
 
 ## Closed: the music goes back to what played before the forge.
 func _exit_tree() -> void:
-	_rate_stop()
 	if Sfx.music:
 		Sfx.music.bench(false)
