@@ -155,6 +155,7 @@ func test_a_ringing_head_sees_double_and_blurred_and_a_clear_one_sees_as_ever() 
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "duel", "headless": true, "seed": 4, "decrees": [], "hazards": []})
+	Save.set_value("settings", {"headBlur": true})   # (asked for in Settings: off, the view is as it was)
 	var hud := Hud.new(m)
 	add_child(hud)
 	for i in 6:
@@ -186,6 +187,7 @@ func test_a_brain_hurt_in_the_campaign_rings_in_the_yard_but_the_view_stays_clea
 	var m := Match.new()
 	add_child(m)
 	m.setup({"mode": "yard", "headless": true, "seed": 1, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": "roundShield"}, "body": Body.sanitize({"brain": 0.5})})
+	Save.set_value("settings", {"headBlur": true})   # (even asked for, the yard's view stays clear)
 	var hud := Hud.new(m)
 	add_child(hud)
 	for i in 8:
@@ -198,4 +200,41 @@ func test_a_brain_hurt_in_the_campaign_rings_in_the_yard_but_the_view_stays_clea
 	await get_tree().process_frame
 	t.check(m.yard != null and hud.daze_fx != null and not hud.daze_fx.visible, "and the view behind his menus is clear")
 	hud.queue_free()
+	m.queue_free()
+
+## The blur after a blow to the head is the player's to ask for (user: take it out for now, keep it as an option): by default a ringing head, and an eye hurt, leave the view as it was
+## before it was made (the edges closing in as the concussion says, nothing swimming); with the setting the view swims as ever.
+func test_the_blur_of_a_struck_head_is_an_option_and_off_by_default() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "duel", "headless": true, "seed": 4, "decrees": [], "hazards": []})
+	var hud := Hud.new(m)   # (the setting is read as the fight begins: none is set)
+	add_child(hud)
+	for i in 6:
+		await get_tree().physics_frame
+	await get_tree().process_frame
+	var f: Fighter = m.me.f
+	f.eye_hurt = 0.0
+	f.concussion = 0.7
+	await get_tree().process_frame
+	await get_tree().process_frame
+	t.check(not hud.head_blur and not hud.daze_fx.visible, "not asked for: a ringing head does not blur the view")
+	var edges := clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3, 0.0, 0.95)
+	t.check(absf(hud.sight.modulate.a - edges) < 0.01, "the edges close in as they did (%.3f, want %.3f)" % [hud.sight.modulate.a, edges])
+	f.concussion = 0.0
+	f.eye_hurt = 0.6
+	await get_tree().process_frame
+	await get_tree().process_frame
+	t.check(not hud.daze_fx.visible, "nor does an eye hurt")
+	hud.queue_free()
+	Save.set_value("settings", {"headBlur": true})
+	var hud2 := Hud.new(m)
+	add_child(hud2)
+	f.eye_hurt = 0.0
+	f.concussion = 0.7
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	t.check(hud2.head_blur and hud2.daze_fx.visible, "asked for, it swims")
+	hud2.queue_free()
 	m.queue_free()

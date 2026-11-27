@@ -2969,5 +2969,6 @@
  "Flip the picked blocks over: left for right, upside down or front for back": "Віддзеркальте вибрані блоки: зліва направо, догори дном або спереду назад",
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "Переробіть вибрані блоки: з матеріалу, вибраного ліворуч, або з вибраною там роллю",
  "a damaged brain": "пошкоджений мозок",
- "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Розірваний або забитий мозок залишає дзвін, що не минає: ноги повільніші, рука слабша, удар помічаєш із запізненням. Жодна голка чи шина його не вилікує. Повернути його може лише ліки самого бога."
+ "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "Розірваний або забитий мозок залишає дзвін, що не минає: ноги повільніші, рука слабша, удар помічаєш із запізненням. Жодна голка чи шина його не вилікує. Повернути його може лише ліки самого бога.",
+ "Blurred, doubled view after a blow to the head (from the next fight)": "Розмитий, подвоєний зір після удару по голові (з наступного бою)"
 }

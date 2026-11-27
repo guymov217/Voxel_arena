@@ -2972,5 +2972,6 @@
  "Flip the picked blocks over: left for right, upside down or front for back": "把选中的方块翻过来：左右、上下或前后",
  "Remake the picked blocks: of the material picked on the left, or with the job picked there": "重做选中的方块：改用左边选的材料，或改作那里选的用途",
  "a damaged brain": "受损的大脑",
- "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "撕裂或挫伤的大脑会留下挥之不去的耳鸣：脚步变慢，手臂变弱，也更晚察觉袭来的一击。针线和夹板都治不好它，只有神明亲授的疗法才能把它还给你。"
+ "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": "撕裂或挫伤的大脑会留下挥之不去的耳鸣：脚步变慢，手臂变弱，也更晚察觉袭来的一击。针线和夹板都治不好它，只有神明亲授的疗法才能把它还给你。",
+ "Blurred, doubled view after a blow to the head (from the next fight)": "头部受击后视野模糊、重影（下一场战斗起生效）"
 }

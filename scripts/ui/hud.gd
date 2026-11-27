@@ -68,6 +68,7 @@ var held_label: Label
 var vignette: TextureRect
 var sight: TextureRect
 var daze_fx: ColorRect   # a head that rings sees double and blurred (DAZE_SHADER), over the view and under the rest
+var head_blur := false   # Settings: only if the player asked for it (off unless picked), read as the fight begins
 var hurt := 0.0
 var knock := 0.0            # the body plate knocked by a blow
 var last_blood := 100.0
@@ -100,6 +101,7 @@ var hands_t := -100.0
 
 func _init(m: Match) -> void:
 	match_ = m
+	head_blur = bool(Save.get_value("settings", {}).get("headBlur", false))
 
 # ---------- Styles ----------
 
@@ -1118,10 +1120,10 @@ func _process(dt: float) -> void:
 		var low := clampf((35.0 - f.blood) / 35.0, 0.0, 1.0)
 		var beat := low * (0.35 + 0.25 * maxf(0.0, sin(Time.get_ticks_msec() / 1000.0 * 6.0)))
 		vignette.modulate.a = clampf(maxf(hurt * 0.8, beat) + (0.6 if not f.alive else 0.0), 0.0, 1.0)
-		# (In the yard he is shopping, not fighting: a head that rings there is the physician's to tell him, not a view that swims behind his menus.)
-		var ring: float = 0.0 if match_.yard != null else f.ringing()
+		# (The view swims and doubles only where the player asked for it, Settings: left off, a head that rings leaves the view as it was before. In the yard he is shopping, not fighting: a head that rings there is the physician's to tell him, not a view that swims behind his menus.)
+		var ring: float = f.ringing() if head_blur and match_.yard == null else 0.0
 		sight.modulate.a = clampf(float(f.eye_hurt) * 0.95 + float(f.concussion) * 0.3 + ring * 0.12, 0.0, 0.95)
-		var dz := clampf(ring * 1.1 + float(f.eye_hurt) * 0.5, 0.0, 1.0)
+		var dz := clampf(ring * 1.1 + float(f.eye_hurt) * 0.5, 0.0, 1.0) if head_blur else 0.0
 		daze_fx.visible = dz > 0.08
 		if daze_fx.visible:
 			var dm := daze_fx.material as ShaderMaterial

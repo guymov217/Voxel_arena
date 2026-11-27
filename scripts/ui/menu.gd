@@ -3489,6 +3489,7 @@ func _options_game(v: VBoxContainer, st: Dictionary) -> void:
 	dsel.item_selected.connect(func(i): _set_opt("decrees", dopts[i]))
 	_opt_row(v, "The Emperor's decrees", dsel, "Odd rules the Emperor lays on an arena duel.")
 	v.add_child(_check("Kill cam: the best kill replayed at the end of a fight (alone and online)", bool(st.get("killcam", true)), func(on): _set_opt("killcam", on)))
+	v.add_child(_check("Blurred, doubled view after a blow to the head (from the next fight)", bool(st.get("headBlur", false)), func(on): _set_opt("headBlur", on)))
 
 func _options_controls(v: VBoxContainer, st: Dictionary) -> void:
 	_opt_row(v, "Mouse sensitivity", _slider(0.3, 2.5, 0.05, float(st.get("sensitivity", 1.0)), func(x): _set_opt("sensitivity", x)))

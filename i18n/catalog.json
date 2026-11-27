@@ -9458,5 +9458,8 @@
 ],
 "A torn or bruised brain leaves a ringing that does not clear: slower on your feet, weaker in the arm, slow to see a blow coming. No needle or splint mends it. Only the god's own cure gives it back.": [
 "scripts/ui/physician_screen.gd:249"
+],
+"Blurred, doubled view after a blow to the head (from the next fight)": [
+"scripts/ui/menu.gd:3492"
 ]
 }

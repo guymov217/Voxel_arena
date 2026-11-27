@@ -370,8 +370,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   (`BRAIN_DEATH`), times `BRAIN_FLOOR`, 0.75; binding wounds does not mend it). Any ringing over wine's (`Fighter.ringing()`: wine is a floor
   of its own and costs nothing) slows him (`CONC_SLOW`, 30% at the worst), weakens his arms (`CONC_WEAK`, 25%, in `stam_f`, so the native arm
   drive follows), unsteadies him (balance and neck, as before) and makes a bot see a blow late and do less about it (`Bot.see_time`,
-  `Bot.dodge_chance`). A player's view swims, shifted, ghosted and blurred (`Hud.DAZE_SHADER`, drawn only while it rings), and closes in at
-  the edges. The brain in a man's head is pink with darker folds, a fissure between its halves and a lilac cerebellum low at the back
+  `Bot.dodge_chance`). A player's view closes in at
+  the edges and, if Settings' "Blurred, doubled view after a blow to the head" is on (off unless picked: `Hud.head_blur`, read as the fight begins; user: take
+  it out for now, keep it as an option), swims, shifted, ghosted and blurred (`Hud.DAZE_SHADER`, drawn only while it rings). The brain in a man's head is pink with darker folds, a fissure between its halves and a lilac cerebellum low at the back
   (`Anatomy._brain_rgb`); it already fills the whole cranium (144 voxels), so it is made clearer, not larger: a larger one would be a thinner
   skull and a more deadly blow to the head.
   In the campaign a brain hurt in a bout goes on into the next (`Body.brain`, 0 to 0.9: what `Fighter.organ_health(BRAIN)` has lost, torn and bruised
