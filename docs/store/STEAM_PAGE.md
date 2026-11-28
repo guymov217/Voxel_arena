@@ -74,7 +74,7 @@ Climb 64 stages, from a drunk in the sand to the Hydra, with 9 bosses on the way
 [h2]With friends[/h2]
 [list]
 [*]Up to 8 players over Steam, in a room of your choice: the co-op campaign (up to 4), or an Arena with friends where money is no object and your campaign is never touched. Choose rounds, bots and teams before every fight, and fight a tournament to crown a champion.
-[*]11 arena modes: best of three, king of the arena, a tournament, free for all, teams (walk into your colour's circle), forge and fight, the endless arena (together), monster hunt, the Emperor, king of the hill and last limb standing.
+[*]10 arena modes: a duel, king of the arena, a tournament (with its bracket; whoever is not fighting watches), free for all on a clock (most kills wins, the fallen stand up again), teams (walk into your colour's circle), forge and fight, the endless arena (together), monster hunt, king of the hill and last limb standing.
 [*]The Emperor's decrees change the rules mid-fight. The crowd throws things.
 [*]A kill cam replays the best kill of every fight in slow motion. Clip it and share it.
 [/list]

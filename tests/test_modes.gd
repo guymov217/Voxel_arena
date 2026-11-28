@@ -31,6 +31,193 @@ func test_free_for_all_ends_with_the_last_man() -> void:
 	t.check(m.over and not result.is_empty() and result[0].won, "the player won")
 	m.queue_free()
 
+# ---------- A fight on a clock (user: Free For All on time, most kills wins, whoever dies stands up again and fights on) ----------
+
+func test_a_free_for_all_on_a_clock_counts_kills_and_ends_on_the_clock() -> void:
+	var m := _match("ffa", {"time_n": 3})
+	m.modes.wait_t = 0.0
+	t.eq(m.modes.time_s, 180.0, "three minutes on the clock")
+	t.check(m.fight_status().contains("3:00"), "the state line has the clock (%s)" % m.fight_status())
+	var result := []
+	m.finished.connect(func(r): result.append(r))
+	var foe: Dictionary = m.entities.filter(func(e): return e.kind == "bot")[0]
+	# One bot falls to the player's blow: a kill for him; the last standing is no end of it, with the clock running.
+	foe.f.last_attacker = m.me.f
+	foe.f.die("wounds")
+	await _steps(3)
+	t.eq(int(m.modes.dm.kills.get(m.me.id, 0)), 1, "the kill is the player's")
+	var rows: Array = m.modes.board()
+	t.check(rows.size() == 4 and rows[0][4] == m.me.id and rows[0][1] == 1, "the board: the player first with one kill (%s)" % str(rows))
+	for e in m.entities:
+		if e != m.me and e.kind == "bot" and e.f.alive:
+			e.f.die("wounds")
+	await _steps(3)
+	t.check(not m.over and result.is_empty(), "every foe fallen is no end of it: they stand up again")
+	t.check(m.fight_status().contains(m.me.f.display_name), "the leader is on the state line (%s)" % m.fight_status())
+	m.queue_free()
+
+func test_the_fallen_stand_up_again_where_nobody_is() -> void:
+	var m := _match("ffa", {"time_n": 5})
+	m.modes.wait_t = 0.0
+	var foe: Dictionary = m.entities.filter(func(e): return e.kind == "bot")[0]
+	var id: int = foe.id
+	var name_: String = foe.f.display_name
+	var n0 := m.entities.size()
+	foe.f.die("wounds")
+	await _steps(3)
+	t.check(m.modes.dm.fell.has(id) and int(m.modes.dm.deaths.get(id, 0)) == 1, "his fall is counted, and he lies a while")
+	var old_f = foe.f
+	m.modes.dm.fell[id] = 0.01
+	await _steps(4)
+	var back = m.entity_by_id(id)
+	t.check(back != null and back.f.alive and not is_same(back.f, old_f), "he is a new man, on his feet, with the same name (%s)" % name_)
+	t.eq(m.entities.size(), n0, "the same number on the sand")
+	t.eq(String(back.f.display_name), name_, "and the same name")
+	t.check(int(m.modes.dm.deaths.get(id, 0)) == 1, "his deaths are not lost")
+	# Where nobody is: farther from every man on his feet than a corner of the ring.
+	var p: Vector3 = back.f.torso.global_position
+	var near := 99.0
+	for e in m.entities:
+		if e != back and e.f.alive:
+			near = minf(near, Vector2(e.f.torso.global_position.x - p.x, e.f.torso.global_position.z - p.z).length())
+	t.check(near > 3.0, "not among the others (%.1f m from the nearest)" % near)
+	m.queue_free()
+
+func test_the_player_who_falls_stands_up_again_and_is_his_own_man_still() -> void:
+	var m := _match("ffa", {"time_n": 5})
+	m.modes.wait_t = 0.0
+	var id: int = m.me.id
+	m.me.f.die("wounds")
+	await _steps(3)
+	m.modes.dm.fell[id] = 0.01
+	await _steps(4)
+	t.check(m.me != null and m.me.id == id and m.me.f.alive, "the player is on his feet again, and `me` is the new man")
+	t.check(m.cam != null or m.headless, "the view has a man to follow")
+	m.queue_free()
+
+func test_a_man_who_stands_up_again_is_still_the_one_who_struck_last() -> void:
+	var m := _match("ffa", {"time_n": 5, "killcam": true})
+	m.modes.wait_t = 0.0
+	var bots: Array = m.entities.filter(func(e): return e.kind == "bot")
+	var a: Dictionary = bots[0]
+	var b: Dictionary = bots[1]
+	var c: Dictionary = bots[2]
+	var old = a.f
+	b.f.last_attacker = old
+	var back: Dictionary = m.respawn_player(a)
+	await _steps(3)
+	t.check(is_instance_valid(b.f.last_attacker) and is_same(b.f.last_attacker, back.f) and not is_same(b.f.last_attacker, old), "the man he struck last was struck by him as he is now, not by a body that is gone")
+	# A man carried off the sand is nobody's last blow: no freed man is left in the place of one.
+	c.f.last_attacker = b.f
+	m.remove_corpse(b)
+	await _steps(3)
+	t.check(c.f.last_attacker == null, "a man taken off the sand is nobody's last blow")
+	# And the kill cam does not take a freed man for a killer.
+	var gone := Node.new()
+	gone.free()
+	m.killcam.on_death(c.f, "wounds", {}, gone)
+	var k: Dictionary = m.killcam.pending.back()
+	t.check(k.killer == null and k.killer_node == null and not bool(k.friendly), "a killer freed since the blow is no killer on the tape")
+	m.queue_free()
+
+func test_the_clock_out_the_most_kills_wins_and_a_level_score_is_a_draw() -> void:
+	var m := _match("ffa", {"time_n": 3})
+	m.modes.wait_t = 0.0
+	var result := []
+	m.finished.connect(func(r): result.append(r))
+	m.modes.dm.kills[m.me.id] = 4
+	var other: Dictionary = m.entities.filter(func(e): return e.kind == "bot")[0]
+	m.modes.dm.kills[other.id] = 2
+	m.modes.dm.t = 179.99
+	await _steps(4)
+	t.check(m.over and not result.is_empty() and result[0].won, "the clock is out: the most kills, the player's, wins")
+	m.queue_free()
+	await get_tree().physics_frame
+	var m2 := _match("ffa", {"time_n": 3})
+	m2.modes.wait_t = 0.0
+	var result2 := []
+	m2.finished.connect(func(r): result2.append(r))
+	m2.modes.dm.kills[m2.me.id] = 3
+	var o2: Dictionary = m2.entities.filter(func(e): return e.kind == "bot")[0]
+	m2.modes.dm.kills[o2.id] = 3
+	m2.modes.dm.t = 179.99
+	await _steps(4)
+	t.check(m2.over and not result2.is_empty() and not result2[0].won, "level on kills and on deaths: a draw")
+	m2.queue_free()
+
+func test_a_team_fight_on_a_clock_counts_the_teams_kills() -> void:
+	var m := _match("teams", {"time_n": 3, "bots": 3})
+	m.modes.wait_t = 0.0
+	var mine: Dictionary = m.me
+	var foe: Dictionary = m.entities.filter(func(e): return e.kind == "bot" and int(e.team) % 2 != int(mine.team) % 2)[0]
+	foe.f.last_attacker = m.me.f
+	foe.f.die("wounds")
+	await _steps(3)
+	t.eq(int(m.modes.dm.kills.get(mine.id, 0)), 1, "a kill of the other side counts")
+	var mate: Dictionary = m.entities.filter(func(e): return e.kind == "bot" and int(e.team) % 2 == int(mine.team) % 2 and e != mine)[0]
+	mate.f.last_attacker = m.me.f
+	mate.f.die("wounds")
+	await _steps(3)
+	t.eq(int(m.modes.dm.kills.get(mine.id, 0)), 1, "a team-mate's does not")
+	t.check(m.fight_status().contains(Loc.t("Red")) and m.fight_status().contains(Loc.t("Blue")), "the state line has both sides' kills (%s)" % m.fight_status())
+	m.modes.dm.t = 179.99
+	var result := []
+	m.finished.connect(func(r): result.append(r))
+	await _steps(4)
+	t.check(m.over and not result.is_empty() and result[0].won == (int(mine.team) % 2 == int(mine.team) % 2), "the clock is out: the side with the most kills wins (the player's)")
+	m.queue_free()
+
+func test_the_hill_stands_the_fallen_up_again_and_the_last_standing_is_no_end() -> void:
+	var m := _match("hill")
+	m.modes.wait_t = 0.0
+	for e in m.entities:
+		if e != m.me:
+			e.f.die("wounds")
+	await _steps(4)
+	t.check(not m.over, "every foe fallen: the hill goes on, they stand up again")
+	var fell: Array = m.modes.dm.fell.keys()
+	t.eq(fell.size(), 3, "the three lie a while")
+	for id in fell:
+		m.modes.dm.fell[id] = 0.01
+	await _steps(4)
+	t.eq(m.entities.filter(func(e): return e.f.alive).size(), 4, "and the four are on their feet again")
+	m.queue_free()
+
+func test_a_friend_who_fell_in_the_hunt_stands_up_again_as_the_wave_is_beaten() -> void:
+	var m := _match("hunt", {"peers": [{"id": 7, "name": "Friend0", "loadout": {"main": "gladius", "off": ""}, "kit": {}}]})
+	m.modes.wait_t = 0.0
+	var friend: Dictionary = m.entities.filter(func(e): return e.kind == "remote")[0]
+	var id: int = friend.id
+	friend.f.die("wounds")
+	await _steps(2)
+	t.check(not m.entity_by_id(id).f.alive or m.entity_by_id(id).f.dying > 0.0, "he lies (at death's door, as a friend in a party does: a friend may lift him)")
+	for e in m.entities.filter(func(x): return x.kind == "beast"):
+		e.f.die("wounds")
+	await _steps(4)
+	var back = m.entity_by_id(id)
+	t.check(back != null and back.f.alive and back.f.dying <= 0.0 and not is_same(back.f, friend.f), "the wave is beaten: the fallen friend is a new man on his feet again")
+	t.eq(m.modes.wave, 2, "and the next wave comes")
+	t.eq(m.humans().size(), 2, "the party is the two of them")
+	m.queue_free()
+
+func test_a_fallen_player_looks_on_where_the_fallen_do_not_stand_up_again() -> void:
+	var m := _match("ffa", {"time_n": 0})
+	m.modes.wait_t = 0.0
+	m.me.f.die("wounds")
+	await _steps(30)
+	t.check(not m.watching(), "he has just fallen: his own view still")
+	await _steps(200)
+	t.check(m.watching(), "a moment later the view is the fight's: the others fight on, and he looks on")
+	m.queue_free()
+	await get_tree().physics_frame
+	var timed := _match("ffa", {"time_n": 3})
+	timed.modes.wait_t = 0.0
+	timed.me.f.die("wounds")
+	timed.modes.dm.fell[timed.me.id] = 99.0
+	await _steps(230)
+	t.check(not timed.watching(), "where the fallen stand up again he stays in his own view")
+	timed.queue_free()
+
 func test_the_hunt_sends_wave_after_wave() -> void:
 	var m := _match("hunt")
 	var beasts := m.entities.filter(func(e): return e.kind == "beast")
@@ -140,16 +327,6 @@ func test_last_limb_takes_a_limb_from_everyone() -> void:
 	await _steps(2)
 	for e in m.entities:
 		t.check(e.f.parts.any(func(p): return p.severed), "%s lost a limb" % e.f.display_name)
-	m.queue_free()
-
-func test_the_emperor_meddles_from_his_box() -> void:
-	var m := _match("emperor")
-	t.check(m.me == null, "the Emperor does not fight")
-	t.check(m.entities.size() >= 2, "the fighters are in")
-	m.modes._emperor(0.016, {"useItem": 0})
-	t.check(not m.decrees.is_empty(), "key 1 decrees something")
-	m.modes._emperor(0.016, {"useItem": 1})
-	t.check(m.entities.any(func(e): return e.kind == "beast"), "key 2 lets a beast in")
 	m.queue_free()
 
 func test_co_op_waves_and_teams_split() -> void:

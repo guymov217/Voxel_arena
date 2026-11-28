@@ -54,6 +54,13 @@ var plate_out := false   # the enemy on the plate is beaten (out of the fight), 
 var plate_target = null
 var plate_flash := 0.0
 var decree_label: Label
+var bracket_view: BracketView   # a tournament's tree (the host's word, Match.bracket): small in the corner of a bout, large for a few seconds after one
+var bracket_seen := [-1, false]
+var board_panel: PanelContainer   # a fight on a clock: the scoreboard (Match.board: name, kills, deaths), the viewer's own row lit
+var board_cells: Array = []       # a row of three labels each, eight rows: name, kills, deaths
+var board_seen := -1
+var spectate_box: VBoxContainer   # "you are watching": a bout he has no man in
+var spectate_sub: Label
 var place_label: Label
 var place_sub: Label
 var tut_panel: PanelContainer
@@ -203,6 +210,8 @@ func _ready() -> void:
 	_build_feed()
 	_build_banner()
 	_build_corner()
+	_build_bracket()
+	_build_board()
 	_build_crosshair()
 	match_.feed.connect(add_feed)
 	match_.banner.connect(show_banner)
@@ -740,6 +749,110 @@ func _build_corner() -> void:
 	decree_label = _label("", 12, BLOOD_BRIGHT, false, true)
 	v.add_child(decree_label)
 
+## A tournament's tree under the corner's lines, and the plate that says he looks on, at the top in the middle.
+func _build_bracket() -> void:
+	bracket_view = BracketView.new()
+	bracket_view.font = font_ui
+	bracket_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bracket_view.visible = false
+	root.add_child(bracket_view)
+	spectate_box = VBoxContainer.new()
+	spectate_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	spectate_box.offset_left = -300
+	spectate_box.offset_right = 300
+	spectate_box.offset_top = 16
+	spectate_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	spectate_box.visible = false
+	root.add_child(spectate_box)
+	var tag := _label(Loc.t("YOU ARE WATCHING"), 22, GOLD_PALE, true)
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tag.add_theme_color_override("font_outline_color", Color(0.1, 0.02, 0.02, 0.8))
+	tag.add_theme_constant_override("outline_size", 5)
+	spectate_box.add_child(tag)
+	spectate_sub = _label("", 14, MUTED, false, true)
+	spectate_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	spectate_box.add_child(spectate_sub)
+
+## The scoreboard of a fight on a clock, under the corner's lines: a name, kills and deaths to a row, the viewer's own lit (the colour of a team's side before the name).
+func _build_board() -> void:
+	board_panel = PanelContainer.new()
+	board_panel.add_theme_stylebox_override("panel", _plate(Color(IRON, 0.72), IRON_EDGE, 3, 1))
+	board_panel.position = Vector2(22, 104)
+	board_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_panel.visible = false
+	root.add_child(board_panel)
+	var g := GridContainer.new()
+	g.columns = 3
+	g.add_theme_constant_override("h_separation", 14)
+	g.add_theme_constant_override("v_separation", 1)
+	g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board_panel.add_child(g)
+	for i in 9:
+		var row := []
+		for c in 3:
+			var l := _label("", 13, TEXT if i > 0 else GOLD_DIM, false, i == 0)
+			if c == 0:
+				l.custom_minimum_size = Vector2(150, 0)
+				l.autowrap_mode = TextServer.AUTOWRAP_OFF
+				l.clip_text = true
+			else:
+				l.custom_minimum_size = Vector2(38, 0)
+				l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			g.add_child(l)
+			row.append(l)
+		board_cells.append(row)
+	board_cells[0][1].text = Loc.t("Kills").to_upper()
+	board_cells[0][2].text = Loc.t("Deaths").to_upper()
+
+## The scoreboard as the match has it (laid out again only when it changed).
+func _board() -> void:
+	var m := match_
+	var on: bool = not m.board.is_empty() and ["ffa", "teams"].has(m.mode)
+	board_panel.visible = on
+	if not on or board_seen == m.board_ver:
+		return
+	board_seen = m.board_ver
+	var mine := int(m.me.id) if m.me != null else -1
+	for i in 8:
+		var cells: Array = board_cells[i + 1]
+		if i < m.board.size():
+			var r: Array = m.board[i]
+			var lit: bool = int(r[4]) == mine
+			var col := GOLD_PALE if lit else TEXT
+			cells[0].text = ("■ " if m.mode == "teams" else "") + str(r[0])
+			cells[0].add_theme_color_override("font_color", col if m.mode != "teams" else ((Color(0.86, 0.3, 0.26) if int(r[3]) % 2 == 0 else Color(0.36, 0.55, 0.95)) if not lit else GOLD_PALE))
+			cells[1].text = str(r[1])
+			cells[1].add_theme_color_override("font_color", col)
+			cells[2].text = str(r[2])
+			cells[2].add_theme_color_override("font_color", Color(col, 0.7))
+		else:
+			for c in cells:
+				c.text = ""
+
+## The tree and the plate of one who looks on, as the match has them now (once a frame; the tree is laid out again only when it changed).
+func _bracket(dt: float, slow: bool) -> void:
+	var m := match_
+	var on: bool = m.mode == "tourney" and m.bracket != null and not m.bracket.entrants.is_empty()
+	if not on:
+		bracket_view.visible = false
+	else:
+		if m.bracket_big_t > 0.0:
+			m.bracket_big_t = maxf(0.0, m.bracket_big_t - dt)
+		var big: bool = m.bracket_big_t > 0.0
+		if bracket_seen[0] != m.bracket_ver or bracket_seen[1] != big:
+			bracket_seen = [m.bracket_ver, big]
+			bracket_view.set_state(m.bracket, m.bracket_mine, big)
+		bracket_view.size = bracket_view.custom_minimum_size
+		bracket_view.position = Vector2((root.size.x - bracket_view.size.x) * 0.5, 150.0) if big else Vector2(22.0, 104.0)
+		bracket_view.visible = true
+	var looks_on: bool = m.watching() and ["tourney", "bo3", "king", "ffa", "teams", "lastLimb"].has(m.mode)
+	spectate_box.visible = looks_on
+	# (He has no man on the sand: no figure of his body, no crosshair of his hands.)
+	body_panel.visible = not looks_on
+	crosshair.visible = not looks_on
+	if looks_on and slow:
+		spectate_sub.text = m.fight_status().to_upper()
+
 ## The tutorial's card at the top: the step, what to do, a tick when it is done.
 func _build_tutorial() -> void:
 	tut_panel = PanelContainer.new()
@@ -1195,6 +1308,9 @@ func _process(dt: float) -> void:
 	match_.spectacle.events.clear()
 	if slow:
 		_place()
+	_bracket(dt, slow)
+	if slow:
+		_board()
 	var status: Label = bars.status
 	status.text = ""   # (the yard's place is in the corner and what to do there in the prompt: the plate stays the fight's size)
 	decree_label.text = (Loc.t("DECREES: %s") % " · ".join(match_.dec.names.map(func(nm): return Loc.t(nm)))).to_upper() if not match_.dec.names.is_empty() else ""

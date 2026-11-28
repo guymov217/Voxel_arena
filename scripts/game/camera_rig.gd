@@ -197,6 +197,38 @@ func orbit(center: Vector3, dt: float) -> void:
 	global_position = pos
 	look_at(look, Vector3.UP)
 
+## A spectator's view (a bout he is not in, a tournament's, a duel's): the camera keeps all of `points` (the fighters' middles) in the frame, from the side his mouse has turned it to
+## (`yaw`, `pitch`), as far off as they are far apart, and never out past the arena's wall.
+func watch(points: Array, yaw: float, pitch: float, dt: float) -> void:
+	aim_k = move_toward(aim_k, 0.0, dt * 4.0)
+	fov = lerpf(fov, FOV, minf(1.0, dt * 3.0))
+	var c := Vector3(0, 0.9, 0)
+	if not points.is_empty():
+		c = Vector3.ZERO
+		for p in points:
+			c += p as Vector3
+		c /= float(points.size())
+	var spread := 0.0
+	for p in points:
+		spread = maxf(spread, Vector2((p as Vector3).x - c.x, (p as Vector3).z - c.z).length())
+	var dist := clampf(5.0 + spread * 1.7, 5.0, 11.0)
+	var fwd := Vector3(sin(yaw), 0, cos(yaw))
+	var rise := clampf(2.3 + dist * 0.3 - sin(pitch) * dist * 0.5, 1.0, dist * 0.95)
+	var want := c - fwd * dist + Vector3(0, rise, 0)
+	var flat := Vector2(want.x, want.z)
+	if flat.length() > WALL_IN:
+		flat = flat.normalized() * WALL_IN
+		want.x = flat.x
+		want.z = flat.y
+	pos = pos.lerp(want, minf(1.0, dt * 4.0))
+	eye = pos
+	look = look.lerp(c + Vector3(0, 0.8, 0), minf(1.0, dt * 6.0))
+	_fade(null, dt)
+	jolt_v = jolt_v.lerp(Vector3.ZERO, minf(1.0, dt * 14.0))
+	global_position = eye + jolt_v
+	if global_position.distance_to(look + jolt_v * 0.4) > 0.01:
+		look_at(look + jolt_v * 0.4, Vector3.UP)
+
 ## While a throw is wound up the camera closes in over the right shoulder and narrows, so the
 ## mark sits under the crosshair and the arc is easy to judge.
 var aim_k := 0.0

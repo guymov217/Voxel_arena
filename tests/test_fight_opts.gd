@@ -13,9 +13,11 @@ func _match(mode: String, opts := {}) -> Match:
 	return m
 
 func test_each_fight_offers_its_own_settings() -> void:
-	t.eq(FightOpts.offers("ffa"), ["rounds", "bots", "decrees"], "the free for all: all three")
-	t.eq(FightOpts.offers("teams"), ["rounds", "bots"], "red against blue")
-	for k in ["hill", "lastLimb", "emperor"]:
+	t.eq(FightOpts.offers("ffa"), ["time", "bots", "decrees"], "the free for all: its length, bots and decrees (it is on a clock unless said: one match, no rounds)")
+	t.eq(FightOpts.offers("ffa", {"time": 0}), ["time", "rounds", "bots", "decrees"], "with no clock it is played over rounds")
+	t.eq(FightOpts.offers("teams"), ["time", "rounds", "bots"], "red against blue: its length, rounds and bots (no clock as it was)")
+	t.eq(FightOpts.offers("teams", {"time": 5}), ["time", "bots"], "on a clock the teams too are one match")
+	for k in ["hill", "lastLimb"]:
 		t.eq(FightOpts.offers(k), ["rounds", "bots"], "%s: rounds and bots" % k)
 	for k in ["bo3", "king", "hunt", "forgefight"]:
 		t.eq(FightOpts.offers(k), ["rounds"], "%s: its rounds" % k)
@@ -31,10 +33,11 @@ func test_the_numbers_on_offer() -> void:
 	t.eq(FightOpts.default_of("ffa", "decrees"), 0, "no decrees as it was")
 
 func test_a_setting_is_made_safe() -> void:
-	t.eq(FightOpts.clean("ffa", {"rounds": 5, "bots": 0, "decrees": 3}), {"rounds": 5, "bots": 0, "decrees": 3}, "what is offered stays")
-	t.eq(FightOpts.clean("ffa", {"rounds": 4, "bots": 99, "decrees": 2}), {"rounds": 1, "bots": 3, "decrees": 0}, "what is not: the fight's own")
-	t.eq(FightOpts.clean("ffa", {"bots": "many", "rounds": INF}), {"rounds": 1, "bots": 3, "decrees": 0}, "not numbers")
-	t.eq(FightOpts.clean("ffa", null), {"rounds": 1, "bots": 3, "decrees": 0}, "nothing at all")
+	t.eq(FightOpts.clean("ffa", {"time": 0, "rounds": 5, "bots": 0, "decrees": 3}), {"time": 0, "rounds": 5, "bots": 0, "decrees": 3}, "what is offered stays")
+	t.eq(FightOpts.clean("ffa", {"time": 3, "rounds": 5, "bots": 0, "decrees": 3}), {"time": 3, "bots": 0, "decrees": 3}, "on a clock there are no rounds to keep")
+	t.eq(FightOpts.clean("ffa", {"time": 0, "rounds": 4, "bots": 99, "decrees": 2}), {"time": 0, "rounds": 1, "bots": 3, "decrees": 0}, "what is not: the fight's own")
+	t.eq(FightOpts.clean("ffa", {"bots": "many", "rounds": INF, "time": "long"}), {"time": 5, "bots": 3, "decrees": 0}, "not numbers")
+	t.eq(FightOpts.clean("ffa", null), {"time": 5, "bots": 3, "decrees": 0}, "nothing at all")
 	t.eq(FightOpts.clean("hunt", {"bots": 5, "decrees": 3}), {"rounds": 0}, "only what the hunt offers")
 	t.eq(FightOpts.clean_value("teams", "bots", -1), -1, "the sides filled is one of the teams'")
 	t.eq(FightOpts.clean_value("ffa", "bots", -1), 3, "and not the free for all's")
@@ -46,6 +49,19 @@ func test_the_bots_the_sand_holds() -> void:
 	t.eq(FightOpts.MAX_FIGHTERS, 8, "the sand holds eight")
 	t.eq(FightOpts.bots_allowed(12, 5), 0, "none when the room fills it")
 	t.eq(FightOpts.bots_allowed(3, -1), 0, "never below none")
+
+func test_the_clock_is_for_the_melee_and_the_teams() -> void:
+	t.eq(FightOpts.choices("ffa", "time"), [0, 3, 5, 10], "none, three, five or ten minutes")
+	t.eq(FightOpts.choices("teams", "time"), [0, 3, 5, 10], "the teams too")
+	t.eq(FightOpts.choices("bo3", "time"), [], "not the duel")
+	t.eq(FightOpts.default_of("ffa", "time"), 5, "the melee is fought for five minutes unless said")
+	t.eq(FightOpts.default_of("teams", "time"), 0, "the teams as they were")
+	t.eq(FightOpts.clean_value("ffa", "time", 7), 5, "a number not on offer is the fight's own")
+	t.eq(FightOpts.clean_value("ffa", "time", 0), 0, "none is one on offer")
+	t.eq(FightOpts.label("ffa", "time", 0), Loc.t("Last one standing"), "no clock: the last one standing")
+	t.eq(FightOpts.label("teams", "time", 0), Loc.t("Last team standing"), "the teams': the last team")
+	t.eq(FightOpts.label("ffa", "time", 5), Loc.t("%d minutes") % 5, "minutes")
+	t.eq(FightOpts.title("time"), Loc.t("Length"), "its name")
 
 func test_the_words() -> void:
 	t.eq(FightOpts.label("ffa", "bots", 0), Loc.t("No bots"), "none")

@@ -50,8 +50,17 @@ var bout_purse := {}   # what the won stage's purse is made of (BoutReport.build
 ## A fight of several rounds (Series): where the match stands, as the host tells it (Series.to_dict) and as the HUD reads it.
 var series := {}
 var series_text := ""
+## A tournament's bracket as the host last told it (Tourney.to_dict, made safe on arrival), the viewer's own key in it, and how long the HUD still shows it large (after a bout, at the draw).
+var bracket: Tourney = null
+var bracket_mine := ""
+var bracket_big_t := 0.0
+var bracket_ver := 0
+var paired_bout := false   # a bout of a pair of the room (the tournament's, the duel's, the king's court's): the rest of the room looks on, and the host goes on to the next bout
 var fstat := ""                 # (a guest's) the line the host gives the fight's state in (wave, round, score), fight_status
 var _fstat_sent := ""
+var board: Array = []           # a fight on a clock: the scoreboard, rows [name, kills, deaths, team, id] (the host's: Modes.board; a guest's: the host's word, made safe); the HUD draws it
+var board_ver := 0
+var _board_sent := ""
 var mind_aim_until := -1.0   # while the local player may hold a man in the Hand of Jupiter
 ## Denarii are scarce: a bout pays well under half of the web game's tables, so a new sword
 ## is saved for over several fights, not bought after the first.
@@ -325,6 +334,9 @@ func _setup(opts: Dictionary) -> void:
 	circus = opts.get("circus", {})
 	headless = opts.get("headless", false)
 	set_series(opts.get("series"))
+	paired_bout = bool(opts.get("pr", false)) or mode == "tourney"
+	if opts.get("tr") is Dictionary and not (opts.tr as Dictionary).is_empty():
+		set_bracket(opts.tr, String(opts.get("tr_mine", "")), 4.5 if bool(opts.get("tr_draw", false)) else 0.0)
 	rng.seed = int(opts.get("seed", stage * 1009 + 7))
 	fx = Fx.new(headless)
 	add_child(fx)
@@ -1486,6 +1498,7 @@ func _physics_process(dt: float) -> void:
 		PhysicsServer3D.set_active(false)   # (the start waits for everyone: nothing of the game is asked, and nothing wakes the world, a pause menu's closing included)
 		return
 	time += dt
+	dead_t = (dead_t + dt) if (me != null and is_instance_valid(me.f) and not me.f.alive) else 0.0
 	tick += 1
 	if attract:
 		_attract_tick(dt)
@@ -1693,6 +1706,8 @@ func _physics_process(dt: float) -> void:
 			Net.send_all("lsnap", part, false)
 	if role == "host" and tick % SNAP_EVERY == 1:
 		_sync_held()
+	if role != "guest" and tick % 30 == 11:
+		_send_board()
 	if role == "host" and tick % 30 == 11:
 		_send_fstat()
 	if role != "guest" and tick % 120 == 37:
@@ -2439,6 +2454,15 @@ func guest_message(type: String, data) -> void:
 		"fstat":
 			if data is String:
 				fstat = data.left(120)
+		"board":
+			# The scoreboard of a fight on a clock (the host's word, made safe: at most eight rows of a name and four small numbers).
+			if data is Array:
+				var rows := []
+				for r in (data as Array).slice(0, 8):
+					if r is Array and (r as Array).size() >= 5 and r[0] is String:
+						rows.append([Net.clean_name(r[0]), clampi(int(Net.num(r[1])), 0, 9999), clampi(int(Net.num(r[2])), 0, 9999), clampi(int(Net.num(r[3])), 0, 99), int(Net.num(r[4]))])
+				board = rows
+				board_ver += 1
 		"assembled":
 			# The host has every man of the start in: I say when I have built them too.
 			_assembled_seen = true
@@ -3281,6 +3305,8 @@ func _credit_kill(victim, attacker, weapon = null) -> void:
 	if victim == null or attacker == null or victim == attacker or not is_instance_valid(victim) or not is_instance_valid(attacker) or kill_credited.has(victim):
 		return
 	kill_credited[victim] = true
+	if modes != null:
+		modes.on_kill(victim, attacker)
 	kills[attacker.display_name] = int(kills.get(attacker.display_name, 0)) + 1
 	_tally(attacker, "kills")
 	if weapon != null and is_instance_valid(weapon) and String(weapon.design.get("name", "")) != "":
@@ -3470,6 +3496,33 @@ func wear_of(e: Dictionary) -> Dictionary:
 		wear["armor"] = e.f.armor_wear()
 	return wear
 
+## The tournament's bracket (the host's word, made safe: Tourney.from_dict) and whom it is shown to; large on the HUD for `big_s` seconds.
+func set_bracket(v, mine_key: String, big_s := 0.0) -> void:
+	bracket = Tourney.from_dict(v)
+	bracket_mine = mine_key
+	bracket_big_t = big_s
+	bracket_ver += 1
+
+## He has no man of his own on the sand and looks on (a bout of a tournament he is not in): the camera goes with the fight, the HUD says so.
+func watching() -> bool:
+	return (me == null or _fallen_looks_on()) and not attract and mode != "yard" and mode != "training" and mode != "campaign" and not entities.is_empty()
+
+var dead_t := 0.0   # how long his man has lain (the view leaves it for the fight after a moment, if the fallen do not stand up again)
+
+## He has fallen in a fight where the fallen do not stand up again (the last one standing: the melee over rounds, the teams, Last Limb) and the others fight on: after a moment the view leaves his body
+## for the fight, as a spectator's (user: every mode fits many players). Not where the fallen stand up again (a clock, the hill: the board tells a guest), nor with no one left to look at.
+func _fallen_looks_on() -> bool:
+	if me == null or not is_instance_valid(me.f) or me.f.alive or over or dead_t < 1.5 or not ["ffa", "teams", "lastLimb"].has(mode):
+		return false
+	if modes != null and modes.respawns():
+		return false
+	if modes == null and not board.is_empty():
+		return false   # (a guest: the host sends a board only for a fight on a clock)
+	for e in entities:
+		if e != me and e.kind != "beast" and is_instance_valid(e.f) and e.f.alive:
+			return true
+	return false
+
 ## Where a match of several rounds stands (the host's word, made safe); {} for a fight of one.
 func set_series(v) -> void:
 	series = Series.clean(v)
@@ -3535,6 +3588,20 @@ func feed_all(line: String) -> void:
 		Net.send_all("feed", line)
 
 ## The host tells the guests the fight's state line when it changes (twice a second at most).
+## The scoreboard of a fight on a clock, as the host has it now (and told to the guests when it changes).
+func _send_board() -> void:
+	if modes == null or role == "guest" or modes.dm.is_empty() or modes.time_s <= 0.0:
+		return
+	var rows: Array = modes.board()
+	var sig := str(rows)
+	if sig == _board_sent:
+		return
+	_board_sent = sig
+	board = rows
+	board_ver += 1
+	if role == "host":
+		Net.send_all("board", rows)
+
 func _send_fstat() -> void:
 	if role != "host" or modes == null or mode == "yard":
 		return
@@ -4284,6 +4351,7 @@ const YARD_RESPAWN := 3.0
 func respawn_player(e: Dictionary) -> Dictionary:
 	var spec: Dictionary = e.spec.duplicate(true)
 	spec.id = e.id
+	var struck := _struck_by(e.f)
 	_remove_entity(e)
 	if role == "host":
 		Net.send_all("despawn", {"id": e.id})
@@ -4291,6 +4359,7 @@ func respawn_player(e: Dictionary) -> Dictionary:
 	for k in ["inventory", "peer", "gadgets", "respawned_at"]:
 		if e.has(k):
 			ne[k] = e[k]
+	_struck_again_by(struck, ne.f)
 	if me == e:
 		me = ne
 	feed.emit(Loc.t("%s is back on his feet") % ne.f.display_name)
@@ -4436,6 +4505,7 @@ func _respawn_apart(e: Dictionary):
 			f.queue_free()
 		e.erase("swapping")
 		return null
+	var struck := _struck_by(e.f)
 	_remove_entity(e)
 	if role == "host":
 		Net.send_all("despawn", {"id": e.id})
@@ -4443,6 +4513,7 @@ func _respawn_apart(e: Dictionary):
 	for k in ["inventory", "peer", "gadgets", "respawned_at"]:
 		if e.has(k):
 			ne[k] = e[k]
+	_struck_again_by(struck, ne.f)
 	if me == e:
 		me = ne
 	feed.emit(Loc.t("%s is back on his feet") % ne.f.display_name)
@@ -4455,8 +4526,24 @@ func remove_corpse(e: Dictionary) -> void:
 	if role == "host":
 		Net.send_all("despawn", {"id": e.id})
 
+## The men whose last blow came from `f`.
+func _struck_by(f) -> Array:
+	var out := []
+	for o in entities:
+		if is_instance_valid(o.f) and o.f != f and o.f.get("last_attacker") == f:
+			out.append(o.f)
+	return out
+
+## The men `old` struck last were struck by the man he stood up again as (a bleeding man's fall is his who bled him, whatever body he is in now).
+func _struck_again_by(struck: Array, nf) -> void:
+	for c in struck:
+		if is_instance_valid(c):
+			c.last_attacker = nf
+
 func _remove_entity(e: Dictionary) -> void:
 	entities.erase(e)
+	for c in _struck_by(e.f):
+		c.last_attacker = null   # (a freed man is nobody's last blow)
 	if tags.has(e.f):
 		if is_instance_valid(tags[e.f]):
 			tags[e.f].queue_free()
@@ -5270,6 +5357,17 @@ func _process_frame(dt: float) -> void:
 				c += e.f.torso.global_position
 				n += 1
 		cam.orbit(Vector3(c.x / n, 0.4, c.z / n) if n > 0 else Vector3(0, 0.4, 0), dt)
+	elif cam and watching():
+		# A man who looks on: the view keeps the fighters in the frame, turned as his mouse turns it.
+		var pts := []
+		for e in entities:
+			if is_instance_valid(e.f) and e.kind != "beast" and e.f.alive and not e.get("harmless", false):
+				pts.append(e.f.torso.global_position)
+		if pts.is_empty():
+			for e in entities:
+				if is_instance_valid(e.f) and e.kind != "beast":
+					pts.append(e.f.torso.global_position)
+		cam.watch(pts, input.look_yaw + input.free_look.x if input else 0.0, clampf(input.look_pitch + input.free_look.y, -1.45, 1.35) if input else 0.0, dt)
 	elif cam:
 		var f = me.f if me else null
 		var yaw := input.look_yaw + input.free_look.x if input else 0.0

@@ -7,7 +7,7 @@ extends Node
 const MODES := {
 	"campaign": {"stage": 1},
 	"coop": {"stage": 1},
-	"duel": {}, "bo3": {}, "ffa": {}, "pvp": {}, "hunt": {}, "teams": {}, "king": {}, "emperor": {}, "hill": {}, "lastLimb": {},
+	"duel": {}, "bo3": {}, "ffa": {}, "pvp": {}, "hunt": {}, "teams": {}, "king": {}, "hill": {}, "lastLimb": {},
 	"endless": {"endless": {"seed": 11}},
 	"training": {"training": {"enemy": "none", "respawn": false, "immortal": false}},
 }

@@ -193,7 +193,8 @@ func test_a_fight_with_no_man_of_the_hosts_own_is_built_as_it_was() -> void:
 	var m := Match.new()
 	m.stage_always = true
 	add_child(m)
-	m.setup({"mode": "emperor", "role": "host", "headless": true, "seed": 6, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "peers": [{"id": 7, "name": "Friend0", "loadout": {"main": "gladius", "off": ""}, "kit": {}}, {"id": 8, "name": "Friend1", "loadout": {"main": "gladius", "off": ""}, "kit": {}}]})
+	# (A tournament's bout between two friends: the host looks on, with no man on the sand.)
+	m.setup({"mode": "tourney", "role": "host", "headless": true, "seed": 6, "decrees": [], "hazards": [], "loadout": {"main": "gladius", "off": ""}, "pair": [{"key": "p7", "name": "Friend0", "peer": 7, "bot": false}, {"key": "p8", "name": "Friend1", "peer": 8, "bot": false}], "peers": [{"id": 7, "name": "Friend0", "loadout": {"main": "gladius", "off": ""}, "kit": {}}, {"id": 8, "name": "Friend1", "loadout": {"main": "gladius", "off": ""}, "kit": {}}]})
 	t.eq(m.humans().size(), 2, "nobody of his own to stand ahead of them: the two friends are in at once")
 	m.queue_free()
 	await get_tree().physics_frame

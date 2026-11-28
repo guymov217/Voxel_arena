@@ -8,7 +8,7 @@ The demo is the same game exported with the `demo` feature (`scripts/game/editio
 - **Arena:** alone, best of three, the free-for-all and the endless arena. In a friends' Arena room,
   the free-for-all (with the bots of the host's choice, or none: everyone against everyone) and the
   endless arena, together. The other modes are not on the menu.
-- **The endless arena** (main menu, and The Arena → Beasts and waves): its waves come from the
+- **The endless arena** (The Arena → Beasts and waves): its waves come from the
   demo's own men and beasts, and its great foes, every fifth wave, are the Big Lion and the
   Cyclops. When the player falls, the last screen says how many more great foes the full game
   holds, without naming them.

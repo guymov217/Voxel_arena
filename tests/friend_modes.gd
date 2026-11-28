@@ -8,7 +8,7 @@ extends Node
 
 const Kit := preload("res://tests/e2e_kit.gd")
 const MenuScript := preload("res://scripts/ui/menu.gd")
-const SMOKE := [["bo3", "Duel"], ["king", "King of the Arena"], ["hunt", "Monster Hunt"], ["emperor", "The Emperor watches"], ["hill", "King of the Hill"], ["lastLimb", "Last Limb Standing"]]
+const SMOKE := [["bo3", "Duel"], ["king", "King of the Arena"], ["hunt", "Monster Hunt"], ["hill", "King of the Hill"], ["lastLimb", "Last Limb Standing"]]
 
 var k: RefCounted
 var menu: Node
@@ -198,7 +198,8 @@ func _smoke(mode: String, title: String) -> void:
 		return
 	await k.pause(5.0)
 	var inm := _friends_in_match()
-	k.check("mode.%s.friends" % mode, inm[0] == 2, "with both friends in it", str(inm))
+	# (A duel is two: the host and one friend fight, the other looks on; every other fight has both friends in it.)
+	k.check("mode.%s.friends" % mode, inm[0] == (1 if mode == "bo3" else 2), "with both friends in it (a duel: one of them, the other looks on)", str(inm))
 	if not await _call_back():
 		k.check("mode.%s.back" % mode, false, "the host calls everyone back to the yard from the pause menu")
 		return

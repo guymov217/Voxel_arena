@@ -9,7 +9,7 @@ extends Node
 const Kit := preload("res://tests/e2e_kit.gd")
 const MenuScript := preload("res://scripts/ui/menu.gd")
 ## The Arena's other modes, each begun from its card at the gate and ended by the host's "back to the yard".
-const SMOKE := [["bo3", "Duel"], ["king", "King of the Arena"], ["hunt", "Monster Hunt"], ["emperor", "The Emperor watches"], ["hill", "King of the Hill"], ["lastLimb", "Last Limb Standing"]]
+const SMOKE := [["bo3", "Duel"], ["king", "King of the Arena"], ["hunt", "Monster Hunt"], ["hill", "King of the Hill"], ["lastLimb", "Last Limb Standing"]]
 
 var k: RefCounted
 var menu: Node
@@ -53,6 +53,7 @@ func _run() -> void:
 	await _ffa()
 	await _teams()
 	if not quick:
+		await _ffa_timed()
 		await _tourney()
 		for m in SMOKE:
 			await _smoke(m[0], m[1])
@@ -207,6 +208,7 @@ func _yard() -> void:
 # ---------- Free for all: rounds and bots ----------
 
 func _ffa() -> void:
+	menu._set_fight_opt("ffa", "time", 0)   # (no clock: the last one standing, over rounds)
 	menu._set_fight_opt("ffa", "rounds", 3)
 	menu._set_fight_opt("ffa", "bots", 2)
 	menu._open_station("gate")
@@ -234,6 +236,33 @@ func _ffa() -> void:
 	k.check("ffa.back", yard, "the match decided, everyone is back in the yard")
 	k.cue("ffa.end")
 	k.check("ffa.guest_back", await k.wait_line("guest", "DONE", "ffa.end", 40.0), "and the friend too")
+
+# ---------- Free for all on a clock: kills counted, the fallen stand up again ----------
+
+func _ffa_timed() -> void:
+	menu._set_fight_opt("ffa", "time", 3)
+	menu._set_fight_opt("ffa", "bots", 2)
+	var ok := await _pick_fight("Free for all")
+	var began: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "ffa" and m().entities.size() >= 4 and m().modes != null and m().modes.time_s > 0.0, 40.0, "the free for all on a clock")
+	k.check("ffat.start", ok and began and m().series.is_empty(), "a free for all on a clock of three minutes begins, no rounds", "%d fighters, series %s" % [m().entities.size() if m() else 0, str(m().series) if m() else ""])
+	k.cue("ffat.start")
+	k.check("ffat.guest", await k.wait_line("guest", "DONE", "ffat.start", 40.0), "the friend has the clock on his state line and the scoreboard the host sent")
+	# Every other man falls: they stand up again, the falls are counted, and the fight is not over.
+	var first = m()
+	var n0: int = m().entities.size()
+	_kill_others()
+	await k.pause(0.5)
+	var deaths := 0
+	for d in m().modes.dm.deaths.values():
+		deaths += int(d)
+	var back: bool = await k.until(func(): return m() == first and m().entities.size() == n0 and m().entities.all(func(e): return e.f.alive), 20.0, "everyone on his feet again")
+	k.check("ffat.respawn", back and deaths >= 3 and not first.over, "the fallen stand up again and the fight goes on", "%d falls counted, %d on the sand" % [deaths, m().entities.size() if m() else 0])
+	var yard := false
+	if await _call_back():
+		yard = await k.until(func(): return _in_yard_with(2), 40.0, "back in the yard")
+	k.check("ffat.back", yard, "the host calls everyone back to the yard")
+	k.cue("ffat.end")
+	await k.wait_line("guest", "DONE", "ffat.end", 40.0)
 
 # ---------- Red against Blue: the circles ----------
 

@@ -45,7 +45,7 @@ What it goes through, in order (the report is grouped the same way):
    round to round; when it is decided everyone is back in the yard.
 5. **Red vs Blue.** The circles on the sand; the host cannot begin while one is out of them; the friend stands in the
    other circle; the fight begins with each on the team of his circle.
-6. **The tournament**, then **each other fight of the Arena** (duel, king of the arena, monster hunt, the Emperor, king of
+6. **The tournament**, then **each other fight of the Arena** (duel, king of the arena, monster hunt, king of
    the hill, last limb standing), each begun from its card, drawn on both screens, and ended by the host calling everyone
    back to the yard from the pause menu.
 7. **A third friend comes late** while the yard is up: he walks in, and the lobby lists three.

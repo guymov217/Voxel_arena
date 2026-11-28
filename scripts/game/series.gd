@@ -12,7 +12,7 @@ extends RefCounted
 ##   "waves":  clear N waves to win (the hunt, the waves of gladiators); 0: until you fall.
 ## A fight with none of these (the endless arena, the campaign) has no rounds setting.
 
-const SERIES_MODES := ["ffa", "teams", "forgefight", "lastLimb", "hill", "emperor", "tourney"]
+const SERIES_MODES := ["ffa", "teams", "forgefight", "lastLimb", "hill", "tourney"]
 const OWN_MODES := ["bo3", "king"]
 const WAVE_MODES := ["hunt"]
 const MOST := 9

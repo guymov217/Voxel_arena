@@ -201,7 +201,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   man's belly at any distance the plain kick reaches, one blow a kick (`kick_landed`); nothing drives the kicker's own body. The blow, shove and fall
   are a push kick's (`Fighter.kick_push` 1, read in `Combat._blow`: `PUSH_JMIN`, `PUSH_CAP`, `PUSH_SHOVE`, `PUSH_DV`, `PUSH_FELL`): it
   winds him, sends the whole of him back from the kicker with his feet let off the sand (back, not up: a few metres a second,
-  not a launch), and fells him most times; a tap is the kick it was. The held key rides in bit 21 of the input word
+  not a launch), and fells him most times; a tap is the kick it was. Its harm is modest (user: "really strong"): the blow is
+  J 28 against the plain kick's 20 (it was 40), which takes some two dozen voxels and under 2% of his blood off the belly
+  (62 and 5%, with an organ, before); the shove does not come from the blow, so it is as hard as it was. The held key rides in bit 21 of the input word
   (`PlayerInput`); bots do not use it. (`tests/test_push_kick.gd`.)
 - **A spear is thrown as a javelin is, over the shoulder** (user: the javelin was held a third of
   the way up its shaft where it balances two thirds of the way, and its wind-up never drew the arm
@@ -242,7 +244,9 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   leans on out over him (`Fighter.grab_deep`), with longer to reach him (`Bot.GRAB_DOWN_REACH`),
   till the hand is down on him (`tests/test_stoop.gd`); while he is held the arm that holds him does not
   strike him, nor for a moment after the throw the arm that threw him: the hold, the slam and the
-  throw do the harm, and what a thrown man lands on does the rest (`Social._throw_land`).
+  throw do the harm, and what a thrown man lands on does the rest (`Social._throw_land`). Only the arm that holds him (`Combat._holds_with`):
+  the other fist, a foot and a head strike the held man as they would any other (user: holding an enemy with one hand, the other hand has
+  to be able to punch him; `tests/test_social.gd`).
   A man's grab is a reach, not a snatch (user: no physical contact was to be seen when a player
   pressed G at a foe; the hand took whatever part of him had its middle within 70 cm, from where
   it hung, and he was held on nothing): G sends the hand out to the nearest part of him the arm
@@ -530,8 +534,8 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   The main menu's forge keeps it in My designs for free; training's forge makes it free and worn
   (training also puts on any piece, bought or designed); the smith's forge makes it for denarii.
 - **Modes**: training and the Arena's fights: best of three (the duel), king of the arena, the
-  tournament, free for all (with a choice of bots and of the Emperor's decrees), teams (red against
-  blue), forge and fight, the endless arena, monster hunt, the Emperor, king of the hill and last
+  tournament, free for all (on a clock with respawns, or the last one standing; with a choice of bots and of the Emperor's decrees), teams (red against
+  blue), forge and fight, the endless arena, monster hunt, king of the hill and last
   limb; and the co-op campaign, which is the campaign room's. Each fight has its own settings (how
   many rounds, how many bots, how many decrees: `scripts/game/fight_opts.gd`), set on a screen
   of its own before it begins.
@@ -754,7 +758,7 @@ Steam can show is Valve's real calls and relay: one test with a second person, i
 A room is opened for one of two things, chosen on the Multiplayer screen (`Net.room_kind`, kept in the
 settings; the guest is told it as he comes in, with a `room` message from the host, and the Steam list shows it):
 
-- **Campaign together.** The co-op campaign, bout after bout, for four at most (`Net.room_cap`: the transport's own limit,
+- **Campaign** (the room's card reads CAMPAIGN). The co-op campaign, bout after bout, for four at most (`Net.room_cap`: the transport's own limit,
   the Steam lobby's and the room's cards are four). It begins as the campaign does alone, in the yard (the room's one button
   goes there; the gate leads to the campaign's bouts and no longer offers the Arena's fights). Every player, the host as much
   as a guest, plays it with a gladiator of the run's own, begun as a new campaign begins a man (the stick, the purse of a new
@@ -784,7 +788,7 @@ settings; the guest is told it as he comes in, with a `room` message from the ho
   a new man there) and the plus begins a new one (`Menu._coop_new_slot`: a run of its own, begun as a campaign begins). The friends
   in the room are noted as the group of the open campaign when the campaign begins or a friend walks in. Only the host sees the row,
   and only before the yard: the campaign cannot be changed under the party.
-- **Arena with friends.** Fights, tournaments, teams and the endless arena. Every player has a gladiator of his own for
+- **Arena** (the room's card reads ARENA). Fights, tournaments, teams and the endless arena. Every player has a gladiator of his own for
   the room, kept apart from the campaign's: his purse, arms, bag, armour, wounds and training (`Save.BOX_KEYS`) are read
   and written in an *arena profile* (`Save.box_begin`: one key of the save, `arena_profile`), never in the campaign's,
   and his purse has no limit (shown as an infinity). Nothing he buys, spends, wears out or loses there reaches the
@@ -841,8 +845,12 @@ Every Arena fight is set on its own screen (`scripts/game/fight_opts.gd`; the ho
 settings under `fight_opts`): the **rounds** (`scripts/game/series.gd`: a match over several bouts, most rounds wins, a
 level score is settled by up to two deciding rounds; the duel's best-of, the king's reign and the hunt's waves have their
 own meaning), the **bots** beside the players (none to seven; the team fights and the tournament may fill their sides and
-bracket), and, for the free-for-all, the number of the Emperor's **decrees** (none, one, three: it is where chaos went).
-The screen says what the sand will hold ("You and 2 friends, with 3 bots"); a room of eight and the bots with them never
+bracket), for the free-for-all, the number of the Emperor's **decrees** (none, one, three: it is where chaos went), and for the free-for-all and
+the team fight the **length**: minutes on a clock (3, 5 or 10; the free-for-all's default is 5) or none, the last one standing over rounds as it was. Alone, the
+screen also shows the gear he goes in with and lets him change it (`Menu._solo_gear`, `_kit_summary`; the kit screen of the endless arena, titled Your gear,
+opened for that fight: every weapon of the game for either hand (`Menu.kit_mains`, `kit_offs`: not the ones kept aside, `Arms.SHELVED`, nor the two men's), bare hands or a forged one, the armourer's whole shop,
+and a bag from the whole market with a + and a − to each ware (`Menu._bag_picker`, the training's, `Throwables.bag_has_room`: nine kinds, the stacks the bag holds); the endless arena's own screen keeps its few pots (three kinds, two of each); kept for the next fights; `tests/test_arena_gear.gd`); in a room each
+goes in with what he took in the yard. The screen says what the sand will hold ("You and 2 friends, with 3 bots"); a room of eight and the bots with them never
 pass 8 fighters (`FightOpts.MAX_FIGHTERS`: one man with seven bots, a room of eight with none). The host keeps the score between bouts (`Menu._series_after`) and tells the
 guests (`series` message, read back made safe: `Series.clean`); a guest is also told the fight's state line (the wave, the
 round, the hill's leader) by the host (`fstat`).
@@ -855,13 +863,47 @@ nobody in it is filled with bots. Everyone reads who stands in each circle and w
 
 ### The tournament
 
-One-on-one bouts, single elimination (`scripts/game/tourney.gd`, `Menu._tournament*`): the players and the bots that
-fill the bracket are drawn in pairs, the pair fights a bout (a duel, over as many rounds as the host set) while the room
-watches, the winner goes on, until one is crowned. A bout of two bots is settled unseen; a player who leaves forfeits his.
+One-on-one bouts, single elimination (`scripts/game/tourney.gd`, `Menu._tourney*`): the players and the bots that
+fill the bracket are drawn in pairs, the pair fights a bout (a duel, over as many rounds as the host set) while everyone else
+looks on, the winner goes on, until one is crowned. Every bout is fought where all can see it, the bouts of bots too (none is
+settled by a coin any more, and a bout that goes on past `Modes.TOURNEY_CAP` is the one with the most blood left's); one who is out of it, or
+waits for his bout, or sits a round out (a bye), looks on at each bout of the others to the crown. A player who leaves forfeits his.
+
+**The tree** (`Tourney.tree`, drawn by `scripts/ui/bracket_view.gd` on the HUD): every round in a column, a box to a bout with its two names, the
+winner lit and the one put out struck through, the bout being fought marked, the places not won yet empty, lines to the bout the winner goes to, the viewer's
+own name marked. Small in the corner through every bout, large with the draw (the first bout) and over the arena for the seconds the result stands after a bout
+(`Match.bracket`, `bracket_big_t`). The host sends it with the bout's `start` message (`tr`, `trd`) and after each bout with the `series` message (`tr`, `big`), as
+`Tourney.to_dict`, which a guest reads back made safe (`Tourney.from_dict`: at most eight entrants, four rounds of keys).
+
+**Looking on** (`Match.watching`: no man of his own on the sand): the camera keeps the fighters in the frame from the side his mouse has turned it to
+(`CameraRig.watch`, never past the wall), the HUD says YOU ARE WATCHING with the bout and has no figure of his body nor crosshair. A friend of the room
+is in this state for every bout he is not in, the host too, and alone the same when the player is out or has a bye (`tests/test_tourney.gd`). So is a player who has
+fallen where the fallen do not stand up again (the last one standing: the melee and the teams over rounds, Last Limb) once his man has lain a moment and others still fight
+(`Match._fallen_looks_on`, `tests/test_modes.gd`).
+
+### The Arena's modes with friends
+
+Every mode of the Arena is made to fit a room (user): what each does with two to eight players.
+
+- **Free for all** is on a clock unless the host says the last one standing (`FightOpts` "time", `Modes`): kills are counted (`Match._credit_kill` tells `Modes.on_kill`,
+  a team-mate's is not one), whoever falls stands up again after `Modes.RESPAWN_S` seconds, at the place of a ring farthest from every man on his feet (the
+  body built apart over frames with a screen, `Match._respawn_apart`), and when the clock is out the most kills wins (fewer deaths if level; level still, a draw).
+  The HUD has the clock on the state line and a scoreboard (`Match.board`, `Hud._board`: name, kills, deaths, the viewer's row lit; the host sends it as the `board`
+  message when it changes, a guest reads it back made safe). **Red vs Blue** has the same clock when the host sets one (the side with the most kills wins, a
+  fall stands up on its own side's half); **King of the Hill** has the fallen stand up again too (the last one standing is no end of it; the first to twenty
+  seconds alone on the hill wins, or the most seconds after `Modes.HILL_CAP`). `tests/test_modes.gd`.
+- **The hunt**: the fallen of the party (those at death's door too) stand up again as each wave is beaten (`Modes._raise_fallen`), as in the endless arena.
+- **The duel and the king's court**: alone against a bot they are as they were. With a friend in the room each bout is a pair of the room (`Modes.paired`:
+  only the two of `opts.pair` are spawned, as in the tournament) and the rest of the room looks on. The duel is two (the host picks which two on the fight's
+  settings when three or more are in the room; with two, the two of them), over the rounds the host set, a match of rounds as any other (`Series`; no stake
+  nor yielding between friends). The court keeps a line (`Menu._king_*`): the winner of a bout stays, the one he beat goes to the back, the next walks in, a
+  friend who comes in later joins the back of the line and one who leaves is out of it; the first to the number of wins (three unless the host says more) is
+  crowned. Each bout's pair and the standings are on the banner between bouts and in the state line (`pr` in the `start` message tells a guest it is a bout of a
+  pair). `tests/test_ladder.gd`.
 
 ### The endless arena
 
-Alone from the main menu, or with friends in an Arena room (rules in `scripts/game/endless.gd`, the screens in `menu.gd`'s
+Alone from the Arena's list (the main menu has no entry of its own for it), or with friends in an Arena room (rules in `scripts/game/endless.gd`, the screens in `menu.gd`'s
 `_endless*`). With friends: the host sets the kit for the whole room; the waves grow with the party (`Endless.plan` takes
 the number of players); each wave beaten, the fallen (and those at death's door) stand up again, everyone is patched up
 and picks a reward of his own on his own screen (`endless_offer` to him, `endless_pick` back, `endless_done` to close the

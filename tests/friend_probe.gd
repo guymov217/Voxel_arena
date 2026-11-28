@@ -145,6 +145,7 @@ func _run() -> void:
 					hurt += 1
 	k.check("quarrel", hurt > 0, "friends who pick a quarrel hurt someone in the yard", "%d parts hurt" % hurt)
 	# A fight: a free for all, the friends fight as bots.
+	menu._set_fight_opt("ffa", "time", 0)   # (no clock: the last one standing decides it)
 	menu._set_fight_opt("ffa", "rounds", 1)
 	menu._set_fight_opt("ffa", "bots", 0)
 	menu._open_station("gate")

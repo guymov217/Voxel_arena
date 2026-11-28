@@ -2,19 +2,16 @@ class_name Modes
 extends RefCounted
 ## The fight modes outside the campaign (game.js, partyModes.js): a duel, best of three, free
 ## for all (with its bots and decrees as the host sets them), the players' brawl, co-op waves of
-## bots, the monster hunt, Red vs Blue, King of the Arena, the tournament (Tourney), the Emperor
-## (you judge from the box), King of the Hill, Last Limb Standing, Forge and Fight and the
-## endless arena (Endless). Host side; `m` is the Match.
+## bots, the monster hunt, Red vs Blue, King of the Arena, the tournament (Tourney), King of the
+## Hill, Last Limb Standing, Forge and Fight and the endless arena (Endless). Host side; `m` is the Match.
 
 const TEAM_COLORS := [0xa02020, 0x2050b0, 0x208040, 0xc0a020, 0x8030a0, 0x20a0a0, 0xd06020, 0x606060]
-const ALL := ["duel", "bo3", "ffa", "pvp", "coop", "hunt", "teams", "king", "tourney", "emperor", "hill", "lastLimb", "forgefight", "endless"]
+const ALL := ["duel", "bo3", "ffa", "pvp", "coop", "hunt", "teams", "king", "tourney", "hill", "lastLimb", "forgefight", "endless"]
 const TITLES := {"duel": "Test fight!", "bo3": "Duel!", "ffa": "Free for all!", "pvp": "Players brawl!", "coop": "Co-op campaign!",
-	"hunt": "Monster Hunt!", "teams": "Red vs Blue!", "king": "King of the Arena!", "tourney": "The Tournament!", "emperor": "The Emperor watches!",
+	"hunt": "Monster Hunt!", "teams": "Red vs Blue!", "king": "King of the Arena!", "tourney": "The Tournament!",
 	"hill": "King of the Hill!", "lastLimb": "Last Limb Standing!", "forgefight": "Forge and Fight!", "endless": "The endless arena!"}
-const LABELS := {"teams": "Teams: players and bots split up", "hill": "Hold the circle alone for 20 s", "lastLimb": "The Emperor removes a limb from everyone every 15 s",
-	"king": "The winner stays, the next challenger walks in", "emperor": "1 decree · 2 beast · 3 weapon · 4 tomato · 5 gift · 6/7 the verdict",
-	"bo3": "Floored? Y yields, F fights on wounded for double the stake", "forgefight": "What you forged against the clock: to the death",
-	"tourney": "One on one, the winner goes on, until one is crowned"}
+const LABELS := {"teams": "Red against Blue", "hill": "Hold the circle for 20 s", "lastLimb": "A limb lost every 15 s", "king": "The winner stays on",
+	"bo3": "Floored? Y yields · F fights on", "forgefight": "To the death", "tourney": "Knockout"}
 
 var m: Node
 var mode := "duel"
@@ -22,7 +19,6 @@ var wave := 0
 var wait_t := 0.0
 var bo3 := {}
 var king := {}
-var emperor := {}
 var hill := {}
 var chop_t := 15.0
 var chops := 0
@@ -31,11 +27,21 @@ var last_winner = null
 var difficulty := 0.7
 var fight_s := 0.0   # Forge and Fight: the host's limit on the fight (0: to the death)
 var fight_t := 0.0
+const TOURNEY_CAP := 120.0   # a tournament's bout that goes on past this (two who will not close, or cannot) is the one with the most blood left's
+## A fight where the fallen stand up again (user: Free For All on a clock, most kills wins, whoever dies stands up again and fights on; the hill too): how long they lie, the clock
+## (`time_s`, seconds: 0 is no clock) and the tally ({t: seconds gone, kills, deaths: by entity id, fell: id -> seconds until he stands again}).
+const RESPAWN_S := 3.0
+const HILL_CAP := 300.0     # a hill held by nobody for twenty seconds is over after this: the most seconds on it
+var time_s := 0.0
+var dm := {}
 var endless: Endless = null
 var rounds := 0            # the host's rounds setting for this fight, in the sense of Series.kind (0: the fight's own)
 var bots_opt := -1         # how many bots the host asked for (-1: the fight's usual; for Red vs Blue -1 is "fill the sides")
 var pair_names: Array = [] # the tournament's bout: the names of the bots in it (the players are the room's, picked by `pair`)
 var tourney_line := ""     # ... and what the HUD says of it ("The semi-final · Aulus against Crixus")
+## The fights that are played in a room as bouts of a pair of it, the rest looking on (Menu picks the pair, `opts.pair`): the tournament, the duel and the king's court.
+const PAIR_MODES := ["tourney", "bo3", "king"]
+var paired := false        # this bout is such a pair's
 var goal_waves := 0        # the hunt and the waves of gladiators: waves to clear to win (0: until the player falls)
 var round_key := ""        # who the round just ended is for, as Series keys him (a player, a bot, a team)
 var teams_chosen := false  # a team fight whose teams the players chose in the yard (TeamSetup): the sides are theirs, bots fill them
@@ -76,7 +82,6 @@ func bot_count(players: int) -> int:
 	if bots_opt >= 0 and FightOpts.BOT_MODES.has(mode):
 		return FightOpts.bots_allowed(players, bots_opt)
 	match mode:
-		"emperor": return maxi(2, 4 - (players - 0))
 		"duel", "bo3": return 1 if not (mode == "bo3" and players >= 2) else 0
 		"ffa", "hill", "lastLimb", "king": return 3 if mode != "king" else 1
 		"teams": return maxi(0, 4 - players)
@@ -88,27 +93,28 @@ static func spawn_pos(index: int, total: int) -> Vector3:
 	var r := minf(15.0 - 2.0, 3.5 if total <= 2 else 5.0)   # a few strides apart: room to square up
 	return Vector3(sin(a) * r, 0.02, cos(a) * r)
 
-## Spawns the players (no fighter for the Emperor himself) and everything the mode starts with.
+## Spawns the players and everything the mode starts with.
 func setup(opts: Dictionary) -> void:
 	difficulty = float(opts.get("difficulty", 0.7))
 	rounds = Series.clean_rounds(mode, opts.get("rounds"))
 	goal_waves = rounds if Series.kind(mode) == "waves" else 0
 	bots_opt = FightOpts.clean_value(mode, "bots", opts.get("bots")) if opts.has("bots") and FightOpts.BOT_MODES.has(mode) else -1
 	fight_s = maxf(0.0, float(opts.get("fight_s", 0.0)))
+	time_s = float(FightOpts.clean_value(mode, "time", opts.get("time_n"))) * 60.0 if FightOpts.TIMED_MODES.has(mode) and opts.has("time_n") else 0.0
 	var players := []
-	if mode != "emperor":
-		players.append({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": opts.get("loadout", {"main": "gladius", "off": "roundShield"}), "skin": opts.get("skin"), "build": opts.get("build", "")})
+	players.append({"kind": "local", "name": opts.get("name", "Gladiator"), "loadout": opts.get("loadout", {"main": "gladius", "off": "roundShield"}), "skin": opts.get("skin"), "build": opts.get("build", "")})
 	for p in opts.get("peers", []):
 		players.append({"kind": "remote", "peer": p.id, "name": p.name, "loadout": p.get("loadout", {"main": "gladius"}), "kit": p.get("kit", {}), "skin": p.get("skin"), "build": p.get("build", "")})
 	var bots := bot_count(players.size())
-	# A tournament's bout: only the two of the pair fight (the rest of the room watch, with no fighter of their own).
-	if mode == "tourney":
-		var pair: Array = opts.get("pair") if opts.get("pair") is Array else []
+	# A bout of a pair (the tournament's, the duel's and the king's, in a room): only the two of the pair fight (the rest of the room watch, with no fighter of their own).
+	var pair: Array = opts.get("pair") if opts.get("pair") is Array else []
+	paired = PAIR_MODES.has(mode) and (not pair.is_empty() or mode == "tourney")
+	if paired:
 		var peers_in: Array = pair.filter(func(e): return e is Dictionary and not bool(e.get("bot", false))).map(func(e): return int(e.get("peer", -1)))
 		players = players.filter(func(p): return peers_in.has(1 if p.kind == "local" else int(p.get("peer", -1))))
 		pair_names = pair.filter(func(e): return e is Dictionary and bool(e.get("bot", false))).map(func(e): return String(e.get("name", "Crixus")))
 		bots = pair_names.size()
-		tourney_line = String(opts.get("tourney_line", ""))
+		tourney_line = String(opts.get("bout_line", opts.get("tourney_line", "")))
 	# The teams the players chose in the yard: each on his side, the bots filling the sides up (TeamSetup.fill_plan).
 	var chosen: Dictionary = opts.get("teams") if opts.get("teams") is Dictionary and TeamSetup.is_team_mode(mode) else {}
 	var side_of := []
@@ -128,7 +134,7 @@ func setup(opts: Dictionary) -> void:
 		for tm in bot_teams:
 			side_total[int(tm)] += 1
 	# (A fight with nobody to fight is no fight: one bot at least.)
-	if mode != "emperor" and not teams_chosen and players.size() + bots < 2:
+	if not teams_chosen and players.size() + bots < 2:
 		bots = 1
 	var total := players.size() + bots
 	# With a screen the friends' men are built over the frames that follow the start, the player's own at once (Match.bring_in, as in the yard): eight men built in the one frame were a stop of
@@ -172,9 +178,6 @@ func setup(opts: Dictionary) -> void:
 		"king":
 			king = {"streak": 0, "max": rounds}
 			spawn_bots(bots, players.size(), total)
-		"emperor":
-			emperor = {"cool": {}, "verdict": ""}
-			spawn_bots(bots, players.size(), total)
 		"endless":
 			endless = Endless.new(m, opts.get("endless", {}))
 		_:
@@ -183,7 +186,9 @@ func setup(opts: Dictionary) -> void:
 		"hill":
 			hill = {"p": Vector3.ZERO, "r": 2.4, "need": 20.0, "score": {}, "king": null}
 			_ring(Vector3.ZERO, 2.4, Color(0.95, 0.8, 0.3, 0.5))
-	m._banner(TITLES.get(mode, "Fight!"), LABELS.get(mode, "Wave 1" if coop_like(mode) else ""))
+	if respawns():
+		dm = {"t": 0.0, "kills": {}, "deaths": {}, "fell": {}}
+	m._banner(TITLES.get(mode, "Fight!"), (Loc.t("Most kills in %d minutes") % int(time_s / 60.0) if time_s > 0.0 else LABELS.get(mode, "Wave 1" if coop_like(mode) else "")))
 	if endless:
 		endless.begin()
 
@@ -277,6 +282,15 @@ func spawn_hunt_wave() -> void:
 		m.bring_in(specs)
 	m.feed.emit(Loc.t("Wave %d: %s") % [wave, ", ".join(names)])
 
+## The fallen of a party stand up again as a wave of the hunt is beaten (those at death's door too), as in the endless arena: nobody lies through the rest of it (user: every mode of the Arena fits many players).
+func _raise_fallen() -> void:
+	for e in m.humans().duplicate():
+		if is_instance_valid(e.f) and (not e.f.alive or e.f.dying > 0.0) and not e.get("swapping", false):
+			if m.staging():
+				m._respawn_apart(e)
+			else:
+				m.respawn_player(e)
+
 func _heal(list: Array, blood: float) -> void:
 	for h in list:
 		var c = h.f
@@ -305,10 +319,129 @@ func update(dt: float, local_inp: Dictionary) -> void:
 	match mode:
 		"hill": _hill(dt)
 		"lastLimb": _last_limb(dt)
-		"emperor": _emperor(dt, local_inp)
 		"endless": endless.update(dt)
-	if mode == "bo3":
+	if mode == "bo3" and not paired:
 		_bo3(dt, local_inp)
+	if respawns():
+		_stand_up(dt)
+
+# ---------- Where the fallen stand up again ----------
+
+## Whether the fallen stand up again in this fight: a melee or a team fight on a clock, and the hill.
+func respawns() -> bool:
+	return time_s > 0.0 or mode == "hill"
+
+## Each step: the clock runs, the fallen are counted, and each stands up again after RESPAWN_S, in the place farthest from the men still on their feet (Match.respawn_player, or built
+## apart over the frames with a screen). One who can do no more (Match._unfit) is fallen too.
+func _stand_up(dt: float) -> void:
+	if m.over or wait_t > 0.0 or m.coming > 0 or dm.is_empty():
+		return
+	dm.t += dt
+	for e in m.entities.duplicate():
+		if e.kind == "beast" or e.get("harmless", false) or not is_instance_valid(e.f):
+			continue
+		if e.f.alive:
+			if float(e.get("unfit_t", 0.0)) >= Match.UNFIT_OUT:
+				e.f.die("wounds")
+			continue
+		if e.get("swapping", false):
+			continue
+		if not dm.fell.has(e.id):
+			dm.fell[e.id] = RESPAWN_S
+			dm.deaths[e.id] = int(dm.deaths.get(e.id, 0)) + 1
+			if e.kind == "local":
+				m._banner(Loc.t("You fell"), Loc.t("Back on your feet in %d seconds") % int(RESPAWN_S))
+			elif e.kind == "remote" and Net.active():
+				Net.send_to(int(e.get("peer", -1)), "banner", {"text": Loc.t("You fell"), "sub": Loc.t("Back on your feet in %d seconds") % int(RESPAWN_S)})
+		else:
+			dm.fell[e.id] -= dt
+			if float(dm.fell[e.id]) <= 0.0:
+				dm.fell.erase(e.id)
+				_stand_again(e)
+
+func _stand_again(e: Dictionary) -> void:
+	var p := _spawn_point(int(e.team))
+	e.spec["pos"] = p
+	e.spec["yaw"] = atan2(-p.x, -p.z)
+	if m.staging():
+		await m._respawn_apart(e)
+	else:
+		m.respawn_player(e)
+
+## Where a man stands up: of a ring of places (a team's, on its own side), the one farthest from every man on his feet.
+func _spawn_point(team: int) -> Vector3:
+	var best := Vector3(0, 0.02, 8.0)
+	var best_d := -1.0
+	var on_feet := _alive_fighters()
+	for k in 12:
+		var p: Vector3
+		if mode == "teams":
+			p = Vector3((-1.0 if team % 2 == 0 else 1.0) * m.rng.randf_range(4.0, 7.0), 0.02, m.rng.randf_range(-6.0, 6.0))
+		else:
+			var a: float = TAU * (float(k) + float(m.rng.randf())) / 12.0
+			p = Vector3(sin(a) * 8.0, 0.02, cos(a) * 8.0)
+		var dmin := 99.0
+		for o in on_feet:
+			dmin = minf(dmin, Vector2(o.f.torso.global_position.x - p.x, o.f.torso.global_position.z - p.z).length())
+		if dmin > best_d:
+			best_d = dmin
+			best = p
+	return best
+
+## One kill is set down for the man who dealt it (Match._credit_kill): a man's own, not a team-mate's.
+func on_kill(victim, attacker) -> void:
+	if time_s <= 0.0 or dm.is_empty() or m.over:
+		return
+	var ve = m.entity_of(victim)
+	var ae = m.entity_of(attacker)
+	if ve == null or ae == null or ve == ae or int(ve.team) == int(ae.team):
+		return
+	dm.kills[ae.id] = int(dm.kills.get(ae.id, 0)) + 1
+
+## The tally as rows [name, kills, deaths, team, id], the most kills first, then the fewest deaths: the scoreboard (and the friends are sent it).
+func board() -> Array:
+	var rows := []
+	if dm.is_empty():
+		return rows
+	for e in m.entities:
+		if e.kind == "beast" or e.get("harmless", false) or not is_instance_valid(e.f):
+			continue
+		rows.append([String(e.f.display_name), int(dm.kills.get(e.id, 0)), int(dm.deaths.get(e.id, 0)), int(e.team), int(e.id)])
+	rows.sort_custom(func(a, b): return a[1] > b[1] or (a[1] == b[1] and (a[2] < b[2] or (a[2] == b[2] and a[4] < b[4]))))
+	return rows.slice(0, 8)
+
+## The kills of each team (Red, Blue), and the deaths.
+func _team_tally() -> Array:
+	var out := [[0, 0], [0, 0]]
+	for e in m.entities:
+		if e.kind == "beast" or e.get("harmless", false):
+			continue
+		var tm := int(e.team) % 2
+		out[tm][0] += int(dm.kills.get(e.id, 0))
+		out[tm][1] += int(dm.deaths.get(e.id, 0))
+	return out
+
+## The clock is out: the one with the most kills wins (the fewer deaths if level; level still, nobody: a draw). In the team fight, the team.
+func _clock_end() -> void:
+	if dm.is_empty() or float(dm.t) < time_s:
+		return
+	var winner = null
+	if mode == "teams":
+		var tl := _team_tally()
+		var win_team := -1
+		if int(tl[0][0]) != int(tl[1][0]):
+			win_team = 0 if int(tl[0][0]) > int(tl[1][0]) else 1
+		elif int(tl[0][1]) != int(tl[1][1]):
+			win_team = 0 if int(tl[0][1]) < int(tl[1][1]) else 1
+		if win_team >= 0:
+			var side: Array = m.entities.filter(func(e): return e.kind != "beast" and int(e.team) % 2 == win_team and is_instance_valid(e.f))
+			var up: Array = side.filter(func(e): return e.f.alive)
+			winner = (up[0] if not up.is_empty() else (side[0] if not side.is_empty() else null))
+	else:
+		var rows := board()
+		if rows.size() == 1 or (rows.size() > 1 and (int(rows[0][1]) != int(rows[1][1]) or int(rows[0][2]) != int(rows[1][2]))):
+			winner = m.entity_by_id(int(rows[0][4]))
+	_win(winner)
 
 func _alive_fighters() -> Array:
 	return m.entities.filter(func(e): return e.f.alive and e.kind != "beast")
@@ -342,51 +475,6 @@ func _last_limb(dt: float) -> void:
 		c.detach_limb(part, {"removed": [], "severed": []})
 	m._banner("THUMBS DOWN", Loc.t("The Emperor takes a limb from everyone (%d)") % chops)
 	m.sfx("boo", Vector3.ZERO)
-
-func _emperor(_dt: float, inp: Dictionary) -> void:
-	var cool: Dictionary = emperor.cool
-	for k in cool:
-		cool[k] = maxf(0.0, cool[k] - _dt)
-	var slot := int(inp.get("useItem", -1)) + 1
-	var fighters: Array = _alive_fighters()
-	var pick = fighters[m.rng.randi_range(0, fighters.size() - 1)].f if not fighters.is_empty() else null
-	var use := func(n: int, cd: float) -> bool:
-		if slot != n or float(cool.get(n, 0.0)) > 0.0:
-			return false
-		cool[n] = cd
-		return true
-	if not m.over:
-		if use.call(1, 12.0):
-			var d := Decrees.roll(1.0, 1, m.rng)
-			if not d.is_empty():
-				m.add_runtime_decree(d[0])
-		if use.call(2, 20.0):
-			var sp := ["lion", "wolf", "bear", "boar", "tiger", "hyena"].filter(func(k): return Edition.foe_open(k))
-			if sp.is_empty():
-				sp = ["lion"]
-			var k: String = sp[m.rng.randi_range(0, sp.size() - 1)]
-			m.spawn_beast({"beast": k, "team": 9, "pos": Vector3(0, 0.1, 12), "yaw": PI})
-			m.feed.emit(Loc.t("The Emperor releases a %s!") % Loc.t(String(Data.beasts.get(k, {}).get("name", k))))
-		if use.call(3, 6.0) and pick:
-			var keys := ["gladius", "axe", "mace", "spear", "warhammer", "longsword", "chicken", "fish", "plank", "dagger"]
-			m.spawn_loose_weapon(Data.preset(keys[m.rng.randi_range(0, keys.size() - 1)]), pick.torso.global_position + Vector3(randf_range(-0.8, 0.8), 5.0, randf_range(-0.8, 0.8)))
-			m.feed.emit(Loc.t("The Emperor throws a weapon down to %s") % pick.display_name)
-		if use.call(4, 1.2) and pick:
-			m.items.throw_from_stands("tomato", pick.head.global_position, 0.9)
-		if use.call(5, 4.0) and pick:
-			m.items.throw_from_stands("bread" if randf() < 0.5 else "wine", pick.torso.global_position + Vector3(0.5, -pick.torso.global_position.y + 0.1, 0.5))
-			m.crowd_add(pick, 5, "imperial favour")
-			m.feed.emit(Loc.t("A gift from the Emperor for %s") % pick.display_name)
-	elif emperor.verdict == "" and last_winner and is_instance_valid(last_winner):
-		if use.call(6, 1.0):
-			emperor.verdict = "up"
-			m._banner("The Emperor: thumbs up!", Loc.t("%s lives, and is paid double") % last_winner.display_name)
-			m.sfx("cheer", Vector3.ZERO)
-		elif use.call(7, 1.0):
-			emperor.verdict = "down"
-			m._banner("The Emperor: thumbs down!", Loc.t("%s wins nothing today") % last_winner.display_name)
-			last_winner.die("wounds")
-			m.sfx("boo", Vector3.ZERO)
 
 func _bo3(dt: float, inp: Dictionary) -> void:
 	var f: Array = m.entities.filter(func(e): return e.kind != "beast")
@@ -479,6 +567,10 @@ func check(dt: float) -> void:
 	# One who has lain unable to stand for a while is out (Match._unfit), as in any bout.
 	var alive: Array = m.entities.filter(func(e): return e.f.alive and not m._unfit(e, dt) and not e.get("harmless", false))
 	var humans_alive: Array = m.humans().filter(func(e): return e.f.alive and float(e.get("unfit_t", 0.0)) < Match.UNFIT_OUT)
+	# A fight on a clock ends on the clock, whoever is standing.
+	if time_s > 0.0:
+		_clock_end()
+		return
 	match mode:
 		"hill":
 			for id in hill.score:
@@ -486,9 +578,15 @@ func check(dt: float) -> void:
 				if e and float(hill.score[id]) >= float(hill.need) and e.f.alive:
 					_win(e)
 					return
-			var fa: Array = _alive_fighters()
-			if fa.size() <= 1:
-				_win(fa[0] if fa.size() else null)
+			# (The fallen stand up again, so the last one standing is no end of it: a hill nobody holds for the twenty seconds is the most seconds on it's, after HILL_CAP.)
+			if not dm.is_empty() and float(dm.t) >= HILL_CAP:
+				var top = null
+				var ts := 0.0
+				for id in hill.score:
+					if float(hill.score[id]) > ts:
+						ts = float(hill.score[id])
+						top = m.entity_by_id(int(id))
+				_win(top)
 			return
 		"lastLimb":
 			var fa2: Array = _alive_fighters()
@@ -496,7 +594,8 @@ func check(dt: float) -> void:
 				_win(fa2[0] if fa2.size() else null)
 			return
 		"bo3":
-			return
+			if not paired:
+				return   # (the duel of one man against a bot ends by its own rules: _bo3; a pair of friends' is a bout like any other, and its rounds the match's: Series)
 		"endless":
 			endless.check(dt, alive, humans_alive)
 			return
@@ -504,6 +603,12 @@ func check(dt: float) -> void:
 			# Out of time: the one standing with the most blood left takes it.
 			fight_t += dt
 			if fight_s > 0.0 and fight_t >= fight_s:
+				_win(ForgeFight.leader(_alive_fighters()))
+				return
+		"tourney":
+			# Every bout of a tournament is watched through to its end (the bouts of bots too): one that will not end is ended by the clock, as above (a level one is the menu's coin).
+			fight_t += dt
+			if fight_t >= TOURNEY_CAP:
 				_win(ForgeFight.leader(_alive_fighters()))
 				return
 		"hunt":
@@ -514,6 +619,7 @@ func check(dt: float) -> void:
 				if goal_waves > 0 and wave >= goal_waves:
 					m._end(true, Loc.t("You cleared %d waves!") % wave, "", 10 * wave)
 					return
+				_raise_fallen()
 				_heal(humans_alive, 22.0)
 				m._round_replay()
 				_next_wave("Wave %d!", "The gates open again")
@@ -549,7 +655,7 @@ func check(dt: float) -> void:
 		if e.kind != "beast":
 			winner = e
 			break
-	if mode == "king" and winner:
+	if mode == "king" and winner and not paired:
 		if winner.kind == "bot" or int(king.streak) + 1 >= int(king.max):
 			m._end(winner == m.me, (Loc.t("%s reigns: the players are all down after %d bouts") % [winner.f.display_name, king.streak]) if winner.kind == "bot" else (Loc.t("%s is King of the Arena: %d bouts unbeaten!") % [winner.f.display_name, king.max]), "", 60 if winner == m.me else 0)
 			return
@@ -591,13 +697,22 @@ func _win(winner) -> void:
 	_claim(winner)
 	var mine: bool = winner != null and m.me != null and (winner == m.me or (mode == "teams" and winner.team == m.me.team))
 	var text := (Loc.t("%s team wins!") % Loc.t(["Red", "Blue"][winner.team % 2])) if mode == "teams" and winner else ((Loc.t("%s wins!") % winner.f.display_name) if winner else "Draw!")
-	var sub := "The Emperor decides: 6 thumbs up · 7 thumbs down" if mode == "emperor" else ""
+	var sub := ""
 	var verdict: Dictionary = m.spectacle.verdict(winner.f if winner else null)
 	if mine:
 		sub = verdict.text
-	m._end(mine, text, sub, (m.round_pay + 20 + int(verdict.bonus / 4)) if mine else 0, mode == "emperor")
+	m._end(mine, text, sub, (m.round_pay + 20 + int(verdict.bonus / 4)) if mine else 0)
 
 func status() -> String:
+	if paired and tourney_line != "":
+		return tourney_line
+	if time_s > 0.0 and not dm.is_empty():
+		var clock := ForgeFight.clock(maxf(0.0, time_s - float(dm.t)))
+		if mode == "teams":
+			var tl := _team_tally()
+			return "%s · %s %d – %d %s" % [Loc.t("%s left") % clock, Loc.t("Red"), int(tl[0][0]), int(tl[1][0]), Loc.t("Blue")]
+		var rows := board()
+		return "%s%s" % [Loc.t("%s left") % clock, (" · %s %d" % [rows[0][0], int(rows[0][1])]) if not rows.is_empty() and int(rows[0][1]) > 0 else ""]
 	match mode:
 		"hill":
 			var best = null
@@ -612,7 +727,6 @@ func status() -> String:
 		"hunt", "coop": return (Loc.t("Wave %d of %d") % [wave, goal_waves]) if goal_waves > 0 else (Loc.t("Wave %d") % wave)
 		"king": return Loc.t("Reign: %d of %d") % [king.streak, king.max]
 		"bo3": return Loc.t("Round %d · stake %d") % [bo3.round, bo3.stake]
-		"emperor": return LABELS.emperor
 		"tourney": return tourney_line if tourney_line != "" else TITLES.tourney.trim_suffix("!")
 		"endless": return endless.status()
 	return TITLES.get(mode, "")

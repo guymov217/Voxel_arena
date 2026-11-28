@@ -591,9 +591,6 @@ func _main(v: VBoxContainer) -> void:
 		entries.append(["The Ludus yard (admin)", enter_yard])
 	entries.append_array([
 		["Arena", func(): show_screen("fights")],
-		["The endless arena", func():
-			endless_back = "main"
-			show_screen("endless")],
 		["Training", func(): show_screen("training")],
 		["The forge", _workshop_forge],
 		["Multiplayer", func(): show_screen("mp")],
@@ -1248,12 +1245,17 @@ func _bag_clean(raw) -> Dictionary:
 	return Throwables.bag_clamp(out)
 
 func _training_bag(v: VBoxContainer) -> void:
-	var bag := _bag_clean(training.get("bag", {}))
-	training.bag = bag
+	_bag_picker(v, training, func(): Save.set_value("training", training), "YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds", 470.0)
+
+## The market's wares, every kind of them, as a bag picked on a screen: a + and a − to each, up to the kinds and the stacks a bag holds (Throwables.bag_has_room). The bag is
+## `holder.bag`, `keep` saves it, `head_fmt` is the line over it (the kinds he has of the most there are).
+func _bag_picker(v: VBoxContainer, holder: Dictionary, keep: Callable, head_fmt: String, height: float) -> void:
+	var bag := _bag_clean(holder.get("bag", {}))
+	holder.bag = bag
 	var head := UIStyle.label("", 13, UIStyle.BRONZE)
 	v.add_child(head)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 470)
+	scroll.custom_minimum_size = Vector2(0, height)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	v.add_child(scroll)
@@ -1267,7 +1269,7 @@ func _training_bag(v: VBoxContainer) -> void:
 	# (Every tile as it stands, to be changed in place: a + or a − used to build the whole screen again, and the list stood at the top once more each time, user.)
 	var tiles := []
 	var refresh := func() -> void:
-		head.text = Loc.t("YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds") % [bag.size(), TRAINING_BAG_MAX]
+		head.text = Loc.t(head_fmt) % [bag.size(), TRAINING_BAG_MAX]
 		for t in tiles:
 			var have := int(bag.get(t.id, 0))
 			(t.style as StyleBoxFlat).border_color = UIStyle.GOLD if have > 0 else UIStyle.BRONZE_DARK
@@ -1302,11 +1304,11 @@ func _training_bag(v: VBoxContainer) -> void:
 		nm.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(nm)
 		var minus := UIStyle.button("−", func():
-			var b: Dictionary = training.bag
+			var b: Dictionary = holder.bag
 			b[item_id] = maxi(0, int(b.get(item_id, 0)) - 1)
 			if int(b[item_id]) == 0:
 				b.erase(item_id)
-			Save.set_value("training", training)
+			keep.call()
 			refresh.call())
 		minus.custom_minimum_size = Vector2(36, 34)
 		row.add_child(minus)
@@ -1315,10 +1317,10 @@ func _training_bag(v: VBoxContainer) -> void:
 		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_child(cnt)
 		var plus := UIStyle.button("+", func():
-			var b: Dictionary = training.bag
+			var b: Dictionary = holder.bag
 			if Throwables.bag_has_room(b, item_id):
 				b[item_id] = int(b.get(item_id, 0)) + 1
-			Save.set_value("training", training)
+			keep.call()
 			refresh.call())
 		plus.custom_minimum_size = Vector2(36, 34)
 		row.add_child(plus)
@@ -1558,14 +1560,37 @@ func _training_forge(hand := "R") -> void:
 
 # ---------- The endless arena ----------
 
-var endless_back := "main"   # the screen its Back goes to (the main menu's own entry, or the Arena's card)
+var endless_back := "fights"   # the screen its Back goes to (the Arena's card, or the fight's settings)
+var kit_for := "endless"       # the fight the kit screen is for: the endless arena's own screen, or the gear of another fight of the Arena (picked alone, before it begins)
 
 ## What the endless arena is entered with (Save "endless_kit"): the arms (a weapon off the rack,
 ## or "built": forged here, Save "endless_weapon" / "endless_off_weapon"), ready-made armour,
 ## a few pots, and today's challenge or a free run.
 var endless_kit := {}
-const ENDLESS_MAINS := ["built", "gladius", "longsword", "zweihander", "falx", "axe", "executionerAxe", "mace", "warhammer", "hammer", "spear", "trident", "dagger"]
-const ENDLESS_OFFS := ["none", "roundShield", "scutum", "dagger", "gladius", "axe", "mace", "built"]
+
+## The weapons a kit can hold (user: why is the choice so small? the game has far more): every weapon there is but the ones kept aside (Arms.SHELVED) and the two men's, the smith's
+## own first, then the rest by name. The main hand: a forged one, bare hands, any of them (a shield is no main weapon). The off hand: nothing, a forged one, a shield or a weapon
+## of one hand that does not shoot.
+static func kit_mains() -> Array:
+	return _kit_arms(["built", "fists"], func(p: Dictionary) -> bool: return String(p.get("kind", "weapon")) != "shield")
+
+static func kit_offs() -> Array:
+	return _kit_arms(["none", "built", "roundShield", "scutum"], func(p: Dictionary) -> bool: return String(p.get("kind", "weapon")) != "shield" and not bool(p.get("twoHanded", false)) and not p.has("shoots"))
+
+static func _kit_arms(first: Array, fits: Callable) -> Array:
+	var out := first.duplicate()
+	for b in Arms.bases():
+		var key := String(b.key)
+		if not out.has(key) and Data.presets.has(key) and fits.call(Data.preset(key)):
+			out.append(key)
+	var rest := []
+	for key in Data.presets:
+		var p: Dictionary = Data.preset(String(key))
+		if out.has(key) or Arms.shelved(String(key)) or bool(p.get("twoPerson", false)) or not fits.call(p):
+			continue
+		rest.append(String(key))
+	rest.sort_custom(func(a, b): return String(Data.preset(a).get("name", a)) < String(Data.preset(b).get("name", b)))
+	return out + rest
 const ENDLESS_POT_KINDS := 3   # kinds of pot in the bag
 const ENDLESS_POT_EACH := 2    # and of each
 
@@ -1587,6 +1612,8 @@ func _endless_arm(side: String):
 	if pick == "built":
 		var d: Dictionary = Save.get_value("endless_weapon" if side == "R" else "endless_off_weapon", {})
 		return d if not d.is_empty() else ("gladius" if side == "R" else "")
+	if pick == "fists" and side == "R":
+		return ""   # (bare hands)
 	if pick == "none" or not Data.presets.has(pick):
 		return "" if side == "L" else "gladius"
 	return pick
@@ -1601,23 +1628,27 @@ func _endless_bag() -> Dictionary:
 func _endless(v: VBoxContainer) -> void:
 	var k := _endless_kit()
 	var rec: Dictionary = Save.get_value("endless", {})
+	var own := kit_for == "endless"
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 16)
-	var tt := UIStyle.title("The endless arena", 34)
+	var tt := UIStyle.title("The endless arena" if own else "Your gear", 34)
 	tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(tt)
 	v.add_child(head)
-	v.add_child(UIStyle.label(Loc.t("Wave after wave of men and beasts, drawn at random, until you fall.") + " " + Loc.t("A great foe every fifth wave; between the waves a breath, and a reward to pick."), 15, UIStyle.MUTED))
-	if Net.active():
+	if not own:
+		v.add_child(UIStyle.label("Arms, armour and pots.", 15, UIStyle.MUTED))
+	else:
+		v.add_child(UIStyle.label(Loc.t("Wave after wave."), 15, UIStyle.MUTED))
+	if own and Net.active():
 		# (In a room the kit is the room's: everyone begins the waves with it, and the run is the party's.)
 		var n := 1 + Net.peers.size()
-		v.add_child(UIStyle.label(Loc.t("Your friends fight beside you with this same kit: the waves grow with the party, the fallen stand up again after each wave, and every one picks a reward of his own.") if n > 1 else Loc.t("Nobody else is in the room yet: friends who come in later join the next run."), 14, UIStyle.TEXT))
+		v.add_child(UIStyle.label(Loc.t("Friends fight beside you with this kit.") if n > 1 else Loc.t("Friends who come in later join the next run."), 14, UIStyle.TEXT))
 	var best := int(rec.get("best", 0))
 	var today: Dictionary = rec.get("daily", {})
 	var lines := []
-	if best > 0:
+	if best > 0 and own:
 		lines.append(Loc.t("Best: wave %d") % best)
-	if String(today.get("day", "")) == Time.get_date_string_from_system(true) and int(today.get("best", 0)) > 0:
+	if own and String(today.get("day", "")) == Time.get_date_string_from_system(true) and int(today.get("best", 0)) > 0:
 		lines.append(Loc.t("Today's challenge: wave %d") % int(today.best))
 	if not lines.is_empty():
 		v.add_child(UIStyle.label("  ·  ".join(lines), 16, UIStyle.GOLD))
@@ -1657,8 +1688,10 @@ func _endless(v: VBoxContainer) -> void:
 	var forged := func(save_key: String) -> String:
 		var d: Dictionary = Save.get_value(save_key, {})
 		return Loc.t("Forged: %s") % (String(d.name) if d.has("name") else Loc.t("none yet"))
-	pick.call("Main hand", ENDLESS_MAINS, ENDLESS_MAINS.map(func(x): return forged.call("endless_weapon") if x == "built" else Data.preset(x).get("name", x)), "main")
-	pick.call("Off hand", ENDLESS_OFFS, ENDLESS_OFFS.map(func(x): return "Nothing" if x == "none" else (forged.call("endless_off_weapon") if x == "built" else Data.preset(x).get("name", x))), "off")
+	var mains := kit_mains()
+	var offs := kit_offs()
+	pick.call("Main hand", mains, mains.map(func(x): return forged.call("endless_weapon") if x == "built" else ("Bare hands" if x == "fists" else Data.preset(x).get("name", x))), "main")
+	pick.call("Off hand", offs, offs.map(func(x): return "Nothing" if x == "none" else (forged.call("endless_off_weapon") if x == "built" else Data.preset(x).get("name", x))), "off")
 	var wb := HFlowContainer.new()
 	wb.add_theme_constant_override("h_separation", 10)
 	wb.add_theme_constant_override("v_separation", 8)
@@ -1673,13 +1706,25 @@ func _endless(v: VBoxContainer) -> void:
 	var al := UIStyle.label((Loc.t("Armour: %d pieces · %.1f kg") % [worn.size(), kg]) if not worn.is_empty() else "Armour: none", 15)
 	al.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_row(left, [al, UIStyle.button("Pick your armour", func(): show_screen("endless_armour"))])
-	var daily := CheckBox.new()
-	daily.text = "Today's challenge: the same waves for everyone"
-	daily.button_pressed = bool(k.get("daily", false))
-	daily.toggled.connect(func(x):
-		k.daily = x
-		_endless_keep())
-	left.add_child(daily)
+	if own:
+		var daily := CheckBox.new()
+		daily.text = "Today's challenge: the same waves for everyone"
+		daily.button_pressed = bool(k.get("daily", false))
+		daily.toggled.connect(func(x):
+			k.daily = x
+			_endless_keep())
+		left.add_child(daily)
+	if own:
+		_endless_pots(right, k)
+	else:
+		# (A fight of the Arena: every ware of the market, as in the training: nothing is paid here.)
+		_arena_bag()   # (the bag he has, made from the pots of the kit the first time)
+		_bag_picker(right, k, _endless_keep, "YOUR BAG · keys 1 to 9 · %d of %d kinds", 400.0)
+	var go := _row(v, [UIStyle.button("Into the arena", _start_endless, true), UIStyle.button("Back", func(): show_screen(endless_back))] if own else [UIStyle.button("Done", func(): show_screen(endless_back), true)])
+	go.alignment = BoxContainer.ALIGNMENT_END
+
+## The endless arena's bag: a few kinds of pot, two of each, picked on and off.
+func _endless_pots(right: VBoxContainer, k: Dictionary) -> void:
 	# The pots: a few kinds, two of each, picked on and off.
 	var pots: Array = (k.get("pots", []) as Array).filter(func(id): return Endless.POTS.has(id))
 	k.pots = pots
@@ -1730,8 +1775,6 @@ func _endless(v: VBoxContainer) -> void:
 		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hb.add_child(nm)
 		Thumbs.item(tex, id)
-	var go := _row(v, [UIStyle.button("Into the arena", _start_endless, true), UIStyle.button("Back", func(): show_screen(endless_back))])
-	go.alignment = BoxContainer.ALIGNMENT_END
 
 ## The armour for the endless arena: the armourer's ready pieces, worn or taken off at a click
 ## (a piece over the same place takes the other off), nothing paid.
@@ -1790,12 +1833,43 @@ func _endless_forge(hand: String) -> void:
 		show_screen("endless"))
 	visible = true
 
+## What he goes into a fight of the Arena with, alone: the arms, the armour and the pots of his kit, as `start` takes them.
+func _solo_gear(endless := false) -> Dictionary:
+	_endless_keep()
+	var arm := Armory.sanitize(_endless_kit().get("armor", []))
+	return {"loadout_override": {"main": _endless_arm("R"), "off": _endless_arm("L"), "armor": arm, "armor_defs": Armory.defs_of(arm)}, "inventory_override": _endless_bag() if endless else _arena_bag()}
+
+## The bag of a fight of the Arena: what he picked from the whole market (first made, from the pots the kit had, two of each).
+func _arena_bag() -> Dictionary:
+	var k := _endless_kit()
+	if not (k.get("bag") is Dictionary):
+		var b := {}
+		for id in k.get("pots", []):
+			b[String(id)] = ENDLESS_POT_EACH
+		k["bag"] = b
+	return Throwables.bag_clamp(k.bag)
+
+## The kit in a line, for the fight's settings: "Gladius · Round shield · 1 piece of armour · 1 kind of pot".
+func _kit_summary() -> String:
+	var k := _endless_kit()
+	var hand := func(side: String) -> String:
+		var a = _endless_arm(side)
+		if a is Dictionary:
+			return String(a.get("name", "Forged"))
+		if String(a) == "":
+			return Loc.t("Bare hands") if side == "R" else Loc.t("Nothing")
+		return Loc.t(String(Data.preset(String(a)).get("name", a)))
+	var worn := Armory.sanitize(k.get("armor", []))
+	var pots := _arena_bag().size()
+	return "%s · %s · %s · %s" % [hand.call("R"), hand.call("L"),
+		(Loc.t("%d pieces of armour") % worn.size()) if worn.size() != 1 else Loc.t("1 piece of armour"),
+		(Loc.t("%d kinds of pot") % pots) if pots != 1 else Loc.t("1 kind of pot")]
+
 func _start_endless() -> void:
 	var k := _endless_kit()
-	_endless_keep()
-	var arm := Armory.sanitize(k.get("armor", []))
-	var lo := {"main": _endless_arm("R"), "off": _endless_arm("L"), "armor": arm, "armor_defs": Armory.defs_of(arm)}
-	start({"mode": "endless", "loadout_override": lo, "inventory_override": _endless_bag(), "decrees": [], "hazards": [], "endless": {"daily": bool(k.get("daily", false))}})
+	var opts := {"mode": "endless", "decrees": [], "hazards": [], "endless": {"daily": bool(k.get("daily", false))}}
+	opts.merge(_solo_gear(true), true)
+	start(opts)
 
 ## Between the waves: the three rewards on cards, the arena held still while one is picked
 ## (a click, or 1, 2 or 3).
@@ -2329,27 +2403,26 @@ const FIGHT_GROUPS := [
 	["Single combat", ["bo3", "king", "tourney"]],
 	["The melee", ["ffa", "teams", "forgefight"]],
 	["Beasts and waves", ["endless", "hunt"]],
-	["Games for the Emperor", ["emperor", "hill", "lastLimb"]],
+	["Games for the Emperor", ["hill", "lastLimb"]],
 ]
 const FIGHT_BLURBS := {
-	"endless": "Wave after wave of men and beasts, drawn at random, until you fall.",
-	"bo3": "One against one. Floored: yield, or fight on wounded for double the stake.",
-	"king": "The winner stays and the next challenger walks in. Reign for seven.",
-	"tourney": "One on one, the winner goes on to the next round, until one is crowned.",
-	"ffa": "Everyone on one sand, the last one standing wins. Bots and decrees as you choose.",
-	"teams": "Red against Blue: friends walk into a circle to pick a side, bots fill the rest.",
-	"hunt": "Beasts pour through the gates in waves. Each wave beaten heals you.",
-	"emperor": "You are the Emperor: send decrees, beasts, weapons and tomatoes, then judge.",
-	"hill": "Hold the circle alone for 20 seconds.",
-	"lastLimb": "Every 15 seconds the Emperor takes a limb from everyone.",
-	"forgefight": "Everyone forges weapons and armour against the clock, then all fight to the death with what they made.",
+	"endless": "Wave after wave.",
+	"bo3": "One on one.",
+	"king": "The winner stays on.",
+	"tourney": "Knockout.",
+	"ffa": "Most kills wins.",
+	"teams": "Red against Blue.",
+	"hunt": "Beasts in waves.",
+	"hill": "Hold the circle.",
+	"lastLimb": "A limb lost every 15 s.",
+	"forgefight": "Forge, then fight.",
 }
 
 func _fights(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title("The Arena", 34))
 	var in_room := Net.active()
 	if not (in_room and Net.room_kind == Net.KIND_ARENA):
-		v.add_child(UIStyle.label("Your arms from the yard stay home: these fights hand out their own weapons.", 15, UIStyle.MUTED))
+		v.add_child(UIStyle.label("Your yard arms stay home.", 15, UIStyle.MUTED))
 	for g in FIGHT_GROUPS:
 		# (The friends' fights only in a room; the endless arena only alone.)
 		var keys: Array = (g[1] as Array).filter(func(k): return (k != "forgefight" or in_room) and Edition.mode_open(k, in_room))
@@ -2374,7 +2447,11 @@ func _fights(v: VBoxContainer) -> void:
 ## numbers the fight offers (FightOpts).
 func _fight_opts_of(k: String) -> Dictionary:
 	var all = Save.get_value("settings", {}).get("fight_opts")
-	return FightOpts.clean(k, (all as Dictionary).get(k) if all is Dictionary else {})
+	var raw = (all as Dictionary).get(k) if all is Dictionary else {}
+	var out := FightOpts.clean(k, raw)
+	if k == "king" and Net.active() and Net.peers.size() >= 1 and not (raw is Dictionary and (raw as Dictionary).has("rounds")):
+		out["rounds"] = 3   # (with friends the first to three wins unless the host says more: a court goes on a bout a man; the reign of seven is the gauntlet's against bots)
+	return out
 
 func _set_fight_opt(k: String, key: String, v: int) -> void:
 	var st: Dictionary = Save.get_value("settings", {})
@@ -2390,7 +2467,7 @@ func _fight_start_opts(k: String) -> Dictionary:
 	var o := _fight_opts_of(k)
 	var out := {"mode": k}
 	for key in o:
-		out[{"rounds": "rounds", "bots": "bots", "decrees": "decrees_n"}[key]] = o[key]
+		out[{"rounds": "rounds", "bots": "bots", "decrees": "decrees_n", "time": "time_n"}[key]] = o[key]
 	return out
 
 var fight_pick := ""   # the fight whose settings are on the screen (fight_setup)
@@ -2402,6 +2479,7 @@ func _fight_press(k: String) -> void:
 			# A room does not pick arms and bag here: everyone has bought and built what he has in the yard, and goes in with it.
 			start({"mode": "endless", "decrees": [], "hazards": [], "endless": {"daily": false}})
 		else:
+			kit_for = "endless"
 			endless_back = "fights"
 			show_screen("endless")
 	elif FightOpts.offers(k).is_empty():
@@ -2416,7 +2494,7 @@ func _fight_setup(v: VBoxContainer) -> void:
 	v.add_child(UIStyle.title(Loc.t(String(Modes.TITLES.get(k, k))).trim_suffix("!"), 32))
 	v.add_child(UIStyle.label(FIGHT_BLURBS.get(k, Modes.LABELS.get(k, "")), 15, UIStyle.MUTED))
 	var mine := _fight_opts_of(k)
-	for key in FightOpts.offers(k):
+	for key in FightOpts.offers(k, mine):
 		var on := FightOpts.choices(k, key)
 		var lab := UIStyle.label(FightOpts.label(k, key, int(mine[key])), 17, UIStyle.GOLD_LIGHT)
 		lab.custom_minimum_size = Vector2(230, 0)
@@ -2432,9 +2510,38 @@ func _fight_setup(v: VBoxContainer) -> void:
 		var name_l := UIStyle.label(FightOpts.title(key), 16, UIStyle.MUTED)
 		name_l.custom_minimum_size = Vector2(90, 0)   # (the arrows of every row stand in one line)
 		_row(v, [name_l, less, lab, more])
+	if not Net.active():
+		# (Alone, what he goes in with is his to pick before it begins: arms, armour and a few pots, kept for the fights that follow. In a room each goes in with what he took in the yard.)
+		var gl := UIStyle.label(Loc.t("Your gear") + ":  " + _kit_summary(), 15, UIStyle.TEXT)
+		gl.custom_minimum_size = Vector2(0, 0)
+		_row(v, [gl, UIStyle.button("Choose your gear", func():
+			kit_for = k
+			endless_back = "fight_setup"
+			show_screen("endless"))])
 	var humans := 1 + (Net.peers.size() if Net.active() else 0)
+	if k == "bo3" and humans >= 2 and Net.active():
+		# (A duel is two: with three or more in the room the host says which two, and the others look on.)
+		var pr := _duel_peers()
+		if humans >= 3:
+			var peers := _room_peers()
+			var pick := func(which: int) -> OptionButton:
+				var o := OptionButton.new()
+				o.custom_minimum_size = Vector2(200, 0)
+				for p in peers:
+					o.add_item(String(_room_entrant(int(p)).name))
+				o.select(peers.find(pr[which]))
+				o.item_selected.connect(func(i):
+					var cur := _duel_peers()
+					cur[which] = int(peers[i])
+					duel_pair = cur
+					show_screen("fight_setup"))
+				return o
+			_row(v, [UIStyle.label("Duellists", 16, UIStyle.MUTED), pick.call(0), UIStyle.label("against", 16, UIStyle.MUTED), pick.call(1)])
+		else:
+			v.add_child(UIStyle.label("%s %s %s" % [_room_entrant(int(pr[0])).name, Loc.t("against"), _room_entrant(int(pr[1])).name], 15, UIStyle.TEXT))
 	var bots := _bots_of(k, humans)
-	v.add_child(UIStyle.label(FightOpts.fighters_text(humans, bots), 15, UIStyle.TEXT))
+	if not (k in ["bo3", "king"] and humans >= 2 and Net.active()):
+		v.add_child(UIStyle.label(FightOpts.fighters_text(humans, bots), 15, UIStyle.TEXT))
 	var lonely := mine.has("bots") and humans + bots < 2
 	if lonely:
 		v.add_child(UIStyle.label("A fight needs at least two: add a bot.", 14, Color(0.95, 0.4, 0.3)))
@@ -2450,7 +2557,7 @@ func _bots_of(k: String, humans: int) -> int:
 		return maxi(0, Tourney.entrant_count(humans, int(mine.get("bots", FightOpts.FILL))) - humans)
 	if mine.has("bots") and int(mine.bots) >= 0:
 		return FightOpts.bots_allowed(humans, int(mine.bots))
-	return m.bot_count(humans if k != "emperor" else humans - 1) if k != "teams" else maxi(0, 4 - humans)
+	return m.bot_count(humans) if k != "teams" else maxi(0, 4 - humans)
 
 ## A team fight in a room: the friends pick their sides first, each walking into the circle on the sand (in the yard) of the
 ## team he plays for; the host begins (E) when all stand in one (_team_go).
@@ -2474,9 +2581,21 @@ func _team_go() -> void:
 	start(opts)
 
 ## The settings are in: the fight begins (the team fights first have the friends pick their sides in the yard).
-func _fight_go(k: String) -> void:
+## What a fight of the Arena begins with: the host's settings for it and, alone, the gear he picked before it began.
+func _fight_begin_opts(k: String) -> Dictionary:
 	var opts := _fight_start_opts(k)
-	if k == "tourney":
+	if not Net.active() and k != "forgefight":
+		opts.merge(_solo_gear(), true)
+	return opts
+
+func _fight_go(k: String) -> void:
+	var opts := _fight_begin_opts(k)
+	var friends: bool = Net.active() and Net.is_host() and Net.peers.size() >= 1
+	if k == "bo3" and friends:
+		_duel_begin(opts)
+	elif k == "king" and friends:
+		_king_begin(opts)
+	elif k == "tourney":
 		_tourney_begin(opts)
 	elif k == "forgefight":
 		ff_setup()
@@ -2947,9 +3066,7 @@ func _ff_setup(v: VBoxContainer) -> void:
 
 ## What Forge and Fight is, in a line: with the armour bench down, only weapons are forged.
 func _forge_fight_line() -> String:
-	if Armory.plate_bench_open:
-		return FIGHT_BLURBS["forgefight"]
-	return "Everyone forges weapons against the clock, then all fight to the death with what they made."
+	return FIGHT_BLURBS["forgefight"]
 
 func row_note_needed() -> bool:
 	return Net.peers.is_empty()
@@ -3217,7 +3334,7 @@ func _kind_card(k: String) -> Button:
 	col.add_theme_constant_override("separation", 6)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m.add_child(col)
-	var head := UIStyle.label(("● " if on else "○ ") + Loc.t("ARENA WITH FRIENDS" if k == Net.KIND_ARENA else "CAMPAIGN TOGETHER"), 16, UIStyle.GOLD_LIGHT if on else UIStyle.TEXT)
+	var head := UIStyle.label(("● " if on else "○ ") + (Loc.t("Arena") if k == Net.KIND_ARENA else Loc.t("Campaign")).to_upper(), 16, UIStyle.GOLD_LIGHT if on else UIStyle.TEXT)
 	head.add_theme_font_override("font", UIStyle.serif(1, 700))
 	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(head)
@@ -3806,15 +3923,29 @@ func start(opts: Dictionary) -> void:
 	# first comes through here again with the match's score carried in `series` (_series_after).
 	if String(opts.get("mode", "")) != "tourney":
 		tourney = null   # (any other fight ends the tournament)
-	if opts.has("bots") or opts.has("decrees_n"):
-		var cleaned := FightOpts.clean(String(opts.get("mode", "")), {"bots": opts.get("bots"), "decrees": opts.get("decrees_n")})
+	if String(opts.get("mode", "")) != "king":
+		king_run = {}
+	if opts.has("bots") or opts.has("decrees_n") or opts.has("time_n"):
+		var cleaned := FightOpts.clean(String(opts.get("mode", "")), {"bots": opts.get("bots"), "decrees": opts.get("decrees_n"), "time": opts.get("time_n")})
 		opts.erase("bots")
 		opts.erase("decrees_n")
+		opts.erase("time_n")
 		if cleaned.has("bots"):
 			opts.bots = cleaned.bots
 		if cleaned.has("decrees"):
 			opts.decrees_n = cleaned.decrees
+		if cleaned.has("time"):
+			opts.time_n = cleaned.time
+	# A fight on a clock is the one match: no rounds.
+	var timed: bool = FightOpts.TIMED_MODES.has(String(opts.get("mode", ""))) and int(opts.get("time_n", 0)) > 0
+	if timed:
+		opts.rounds = 1
+		opts.erase("series")
 	var round_kind := Series.kind(String(opts.get("mode", "")))
+	if round_kind == "own" and opts.get("mode") == "bo3" and opts.has("pair"):
+		round_kind = "series"   # (a duel of two friends is over the rounds the host set, as any match of rounds is)
+	if timed:
+		round_kind = ""
 	if round_kind != "":
 		opts.rounds = Series.clean_rounds(String(opts.mode), opts.get("rounds"))
 		if round_kind == "series" and int(opts.rounds) > 1:
@@ -3890,7 +4021,7 @@ func start(opts: Dictionary) -> void:
 			peers.append(spec)
 		opts.peers = peers
 		hold_told = Match.start_hold_expected(opts)   # (a start in a room with a screen waits for everyone to be built: the guests are told, and wait for the host's "go")
-		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "rounds": int(opts.get("rounds", 0)), "series": opts.get("series", {}), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0)), "hold": hold_told})
+		Net.send_all("start", {"mode": opts.mode, "stage": opts.get("stage", 1), "coop": opts.get("coop", false), "rounds": int(opts.get("rounds", 0)), "series": opts.get("series", {}), "decrees": opts.get("decrees", []), "hazards": opts.get("hazards", []), "circus": {"day": opts.get("circus", {}).get("day", 0), "bout_index": opts.get("circus", {}).get("bout_index", 0)}, "fight_s": float(opts.get("fight_s", 0.0)), "sky": String(opts.get("sky", "noon")), "keep": checkpoint_bout, "run": int(Save.get_value("run_seed", 0)), "hold": hold_told, "tr": opts.get("tr", {}), "trd": bool(opts.get("tr_draw", false)), "pr": opts.get("pair") is Array and not (opts.pair as Array).is_empty()})
 		if Net.room_kind == Net.KIND_ARENA:
 			Net.set_lobby_info(Loc.t("Arena") + (" · " + Modes.title_of(String(opts.mode)) if opts.mode != "yard" else ""))
 		else:
@@ -4322,7 +4453,127 @@ func _series_after(r: Dictionary, was: Match) -> bool:
 			return false
 	if was.mode == "tourney" and tourney != null:
 		return await _tourney_after(winner, was)
+	if was.mode == "king" and was.paired_bout and not king_run.is_empty():
+		return await _king_after(winner, was)
 	return false
+
+# ---------- The duel and the king's court with friends ----------
+# A duel is two, a king's court is one man on the sand and the next to walk in: with friends in the room (user: every mode fits many players) each bout is a pair of the room
+# (Modes.paired: the same filter as the tournament's), the rest of the room looking on. The duel is the pair's, over the rounds the host set (Series: best of); the court keeps a line:
+# the winner stays, the one he beat goes to the back, and the first to the number of wins is crowned. Alone (against bots) both are as they were.
+
+var duel_pair: Array = []     # the two peers who duel (a room of three or more picks them on the fight's settings; else the host and the friend)
+var king_run: Dictionary = {} # a king's court of friends: {king, queue (keys), wins, streak, names, peers (by key), target}
+
+func _room_peers() -> Array:
+	var out := [1]
+	for id in Net.peers:
+		out.append(int(id))
+	return out
+
+## A player of the room as the brackets have him: {key, name, peer, bot}.
+func _room_entrant(peer: int) -> Dictionary:
+	var nm := String(Save.get_value("name", "Gladiator")) if peer == 1 else String(Net.peers.get(peer, {}).get("name", "?"))
+	return {"key": Series.human_key(peer), "name": nm, "peer": peer, "bot": false}
+
+## The two who duel: those picked, if both are in the room, else the host and the first friend.
+func _duel_peers() -> Array:
+	var here := _room_peers()
+	if duel_pair.size() == 2 and here.has(int(duel_pair[0])) and here.has(int(duel_pair[1])) and int(duel_pair[0]) != int(duel_pair[1]):
+		return [int(duel_pair[0]), int(duel_pair[1])]
+	return [1, int(here[1]) if here.size() > 1 else -1]
+
+func _duel_begin(opts: Dictionary) -> void:
+	var pr := _duel_peers()
+	var a := _room_entrant(int(pr[0]))
+	var b := _room_entrant(int(pr[1]))
+	opts.mode = "bo3"
+	opts.pair = [a, b]
+	opts.pr = true
+	opts.bout_line = "%s %s %s" % [a.name, Loc.t("against"), b.name]
+	start(opts)
+
+func _king_begin(opts: Dictionary) -> void:
+	var order := _room_peers()
+	order.shuffle()
+	var keys := []
+	var names := {}
+	var peers := {}
+	for p in order:
+		var e := _room_entrant(int(p))
+		keys.append(String(e.key))
+		names[e.key] = e.name
+		peers[e.key] = int(p)
+	king_run = {"king": keys[0], "queue": keys.slice(1), "wins": {}, "streak": {}, "names": names, "peers": peers, "target": clampi(int(opts.get("rounds", 5)), 1, 9)}
+	start(_king_bout())
+
+## Who has left the room is out of the court, who has come in is at the back of the line, and a king gone leaves the crown to the next.
+func _king_sync() -> void:
+	var k := king_run
+	for key in (k.peers as Dictionary).keys():
+		var p := int(k.peers[key])
+		if p != 1 and not Net.peers.has(p):
+			(k.queue as Array).erase(key)
+			if String(k.king) == String(key) and not (k.queue as Array).is_empty():
+				k.king = (k.queue as Array).pop_front()
+				k.streak[k.king] = 0
+	for id in Net.peers:
+		var e := _room_entrant(int(id))
+		if not (k.peers as Dictionary).has(e.key):
+			k.peers[e.key] = int(id)
+			k.names[e.key] = e.name
+			(k.queue as Array).append(e.key)
+
+## The next bout of the court: the king and the one who is first in the line.
+func _king_bout() -> Dictionary:
+	var k := king_run
+	var kk := String(k.king)
+	var ck := String((k.queue as Array)[0])
+	var streak := int(k.streak.get(kk, 0))
+	var pr := []
+	for key in [kk, ck]:
+		pr.append({"key": key, "name": String(k.names[key]), "peer": int(k.peers[key]), "bot": false})
+	return {"mode": "king", "rounds": 1, "pair": pr, "pr": true, "bout_line": "%s%s %s %s" % [k.names[kk], (" (%d)" % streak) if streak > 0 else "", Loc.t("against"), k.names[ck]]}
+
+## A bout of the court is over (host): the winner stays (or takes the crown from the king), the loser goes to the back of the line, the standings are shown (and told); the next bout, or the crown.
+func _king_after(winner: String, was: Match) -> bool:
+	_king_sync()
+	var k := king_run
+	var kk := String(k.king)
+	var queue: Array = k.queue
+	if queue.is_empty():
+		king_run = {}
+		return false   # (everyone else has left: the court is over)
+	var ck := String(queue[0])
+	if winner != kk and winner != ck:
+		winner = kk if randf() < 0.5 else ck   # (a drawn bout: the coin)
+	var loser := ck if winner == kk else kk
+	k.wins[winner] = int(k.wins.get(winner, 0)) + 1
+	k.streak[winner] = int(k.streak.get(winner, 0)) + 1
+	k.streak[loser] = 0
+	queue.pop_front()
+	queue.append(loser)
+	k.king = winner
+	var crowned: bool = int(k.wins[winner]) >= int(k.target)
+	var standing := (k.wins as Dictionary).keys()
+	standing.sort_custom(func(a, b): return int(k.wins[a]) > int(k.wins[b]))
+	var board := "  ·  ".join(standing.slice(0, 6).map(func(key): return "%s %d" % [k.names[key], int(k.wins[key])]))
+	var text := (Loc.t("%s is King of the Arena!") % k.names[winner]) if crowned else (Loc.t("%s holds the arena (%d)") % [k.names[winner], int(k.streak[winner])])
+	var sub := board if crowned else (Loc.t("Next: %s") % k.names[queue[0]])
+	was._banner(text, sub)
+	if Net.active() and Net.is_host():
+		Net.send_all("series", {"s": {}, "next": not crowned, "t": text, "sub": sub})
+	var t0 := Time.get_ticks_msec()
+	while match_ == was and Time.get_ticks_msec() - t0 < series_score_ms + 800:
+		await get_tree().process_frame
+	if match_ != was:
+		return true
+	if crowned:
+		king_run = {}
+		return false
+	_king_sync()
+	start(_king_bout())
+	return true
 
 # ---------- The tournament ----------
 # One on one, single elimination (Tourney): the room's players, and the bots that fill the bracket, drawn into pairs; each pair
@@ -4331,6 +4582,7 @@ func _series_after(r: Dictionary, was: Match) -> bool:
 
 var tourney: Tourney = null
 var tourney_opts := {}
+var tourney_drawn := false   # the draw of the bracket was shown (large, with the first bout)
 
 func _tourney_begin(opts: Dictionary) -> void:
 	var list := [{"key": Series.human_key(1), "name": String(Save.get_value("name", "Gladiator")), "peer": 1, "bot": false}]
@@ -4353,6 +4605,7 @@ func _tourney_begin(opts: Dictionary) -> void:
 		used[nm] = true
 		list.append({"key": Series.bot_key(nm), "name": nm, "peer": -1, "bot": true})
 	tourney = Tourney.make(list, rng.randi(), int(opts.get("rounds", 1)))
+	tourney_drawn = false
 	tourney_opts = opts.duplicate()
 	if not _tourney_go():
 		_tourney_over()
@@ -4365,16 +4618,14 @@ func _tourney_go() -> bool:
 	start(_tourney_bout(mt))
 	return true
 
-## Forfeits and the bouts of bots settled, the rounds carried on: the next bout to be seen ({} when there is none).
+## Forfeits settled, the rounds carried on: the next bout to be fought ({} when there is none: the tournament is decided).
 func _tourney_plan() -> Dictionary:
-	var rng := RandomNumberGenerator.new()
-	rng.randomize()
 	for guard in 16:
 		for e in tourney.entrants:
 			if not bool(e.bot) and int(e.peer) != 1 and not Net.peers.has(int(e.peer)) and not bool(e.get("gone", false)):
 				tourney.forfeit(String(e.key))   # (a player who left: the other goes on)
-		tourney.settle_bots(rng)
-		if tourney.finished() or tourney.humans_left() == 0:
+		# (Every bout is fought where all can see it, the bouts of bots too: whoever is not in a bout, or is out of it, looks on. No coin settles them any more.)
+		if tourney.finished():
 			return {}
 		var mt := tourney.open_match()
 		if not mt.is_empty():
@@ -4384,8 +4635,17 @@ func _tourney_plan() -> Dictionary:
 	return {}
 
 func _tourney_bout(mt: Dictionary) -> Dictionary:
-	return {"mode": "tourney", "rounds": int(tourney_opts.get("rounds", 1)), "pair": [tourney.entrant(String(mt.a)), tourney.entrant(String(mt.b))],
+	var bout := {"mode": "tourney", "rounds": int(tourney_opts.get("rounds", 1)), "pair": [tourney.entrant(String(mt.a)), tourney.entrant(String(mt.b))],
 		"tourney_line": "%s · %s" % [tourney.round_name(), tourney.match_text(mt)]}
+	for key in ["loadout_override", "inventory_override"]:
+		if tourney_opts.has(key):
+			bout[key] = tourney_opts[key]   # (alone: the gear he picked goes into every bout of his)
+	# The tree goes with the bout (the HUD draws it; a guest is sent it with the start), and is shown large with the draw.
+	bout["tr"] = tourney.to_dict()
+	bout["tr_mine"] = Series.human_key(1)
+	bout["tr_draw"] = not tourney_drawn
+	tourney_drawn = true
+	return bout
 
 ## The bout is over (host, or alone): the winner goes on; how it stands is shown (and told); the next bout, or the end.
 func _tourney_after(winner: String, was: Match) -> bool:
@@ -4408,8 +4668,12 @@ func _tourney_after(winner: String, was: Match) -> bool:
 	else:
 		sub = "%s · %s · %s" % [sub, tourney.round_name(), tourney.match_text(next)]
 	was._banner(text, sub)
+	# The tree as the bout left it, large over the arena while the banner stands (and told to the guests, to show the same).
+	var shown_s := float(series_score_ms + 800) / 1000.0
+	var tree_now := tourney.to_dict()
+	was.set_bracket(tree_now, Series.human_key(1), shown_s)
 	if Net.active() and Net.is_host():
-		Net.send_all("series", {"s": {}, "next": not next.is_empty(), "t": text, "sub": sub})
+		Net.send_all("series", {"s": {}, "next": not next.is_empty(), "t": text, "sub": sub, "tr": tree_now, "big": shown_s})
 	var t0 := Time.get_ticks_msec()
 	while match_ == was and Time.get_ticks_msec() - t0 < series_score_ms + 800:
 		await get_tree().process_frame
@@ -4434,7 +4698,7 @@ func _on_finished(r: Dictionary) -> void:
 	# Five seconds on the banner over the arena, to take in how the bout ended (Space or Enter
 	# goes on sooner, but not in the first moment, nor a mouse button still held from the fight).
 	# A round of a match of several rounds: a shorter look, then the match's score (_series_after).
-	var in_series: bool = was != null and (not was.series.is_empty() or was.mode == "tourney")
+	var in_series: bool = was != null and (not was.series.is_empty() or was.mode == "tourney" or was.paired_bout)
 	var began := Time.get_ticks_msec()
 	var wait_until := began + (series_look_ms if in_series else 5000)
 	while Time.get_ticks_msec() < wait_until and match_ == was:
@@ -4644,7 +4908,7 @@ func _on_net(type: String, data, _from: int) -> void:
 					# Into the checkpoint's bout (the host's word): what a fall brings me back to.
 					CampaignRun.keep_own(int(Net.num(data.get("stage"))), int(Net.num(data.get("run"))))
 				series_note = {}
-				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "rounds": Series.clean_rounds(String(data.mode), data.get("rounds")), "series": Series.clean(data.get("series")), "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky")), "hold": data.get("hold") == true})
+				match_.setup({"mode": data.mode, "stage": data.stage, "coop": bool(data.get("coop", false)), "role": "guest", "autopilot": cmd_bot, "rounds": Series.clean_rounds(String(data.mode), data.get("rounds")), "series": Series.clean(data.get("series")), "decrees": ids, "hazards": hz, "circus": data.get("circus", {}) if data.get("circus") is Dictionary else {}, "fight_s": _clean_fight_s(data.get("fight_s")), "sky": Arena.clean_sky(data.get("sky")), "hold": data.get("hold") == true, "tr": data.get("tr") if data.get("tr") is Dictionary else {}, "tr_mine": Series.human_key(Net.my_id()), "tr_draw": data.get("trd") == true, "pr": data.get("pr") == true})
 				_apply_input_settings()
 				match_.finished.connect(_on_finished)
 				match_.lost.connect(_campaign_lost)
@@ -4753,8 +5017,10 @@ func _on_net(type: String, data, _from: int) -> void:
 				if not sd.is_empty():
 					match_.set_series(sd)
 				series_note = {"next": data.get("next") == true}
+				if data.get("tr") is Dictionary and match_.mode == "tourney":
+					match_.set_bracket(data.tr, Series.human_key(Net.my_id()), clampf(Net.num(data.get("big")), 0.0, 20.0))   # (the tree after the bout, shown large while the banner stands)
 				match_.banner.emit(str(data.get("t", "")).left(60), str(data.get("sub", "")).left(140))
-		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "gate_picks", "teams", "bone", "held", "fstat", "assembled", "go":
+		"isnap", "zone", "spot", "feed", "wloose", "wspawn", "wpick", "lsnap", "fx", "guts", "gutp", "kc", "kcr", "yard_next", "gate_picks", "teams", "bone", "held", "fstat", "board", "assembled", "go":
 			if match_:
 				match_.guest_message(type, data)
 		"music":

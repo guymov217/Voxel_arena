@@ -244,7 +244,7 @@ func _kind_chip(arena: bool) -> Control:
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	chip.name = "KindChip"
 	var k := Label.new()
-	k.text = Loc.t("ARENA WITH FRIENDS") if arena else Loc.t("CAMPAIGN TOGETHER")
+	k.text = (Loc.t("Arena") if arena else Loc.t("Campaign")).to_upper()
 	k.add_theme_font_override("font", UIStyle.serif(2, 700))
 	k.add_theme_font_size_override("font_size", 17)
 	k.add_theme_color_override("font_color", UIStyle.GOLD_LIGHT)

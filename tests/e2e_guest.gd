@@ -8,7 +8,7 @@ extends Node
 
 const Kit := preload("res://tests/e2e_kit.gd")
 const MenuScript := preload("res://scripts/ui/menu.gd")
-const SMOKE := ["bo3", "king", "hunt", "emperor", "hill", "lastLimb"]
+const SMOKE := ["bo3", "king", "hunt", "hill", "lastLimb"]
 
 var k: RefCounted
 var menu: Node
@@ -95,6 +95,7 @@ func _run_guest() -> void:
 		["ffa.start", _ffa_start], ["ffa.round2", _ffa_round2], ["ffa.end", _back_in_yard],
 		["teams.circles", _teams_circles], ["teams.fight", _teams_fight], ["teams.end", _back_in_yard]]
 	if not quick:
+		steps.append_array([["ffat.start", _ffa_timed_start], ["ffat.end", _back_in_yard]])
 		steps.append_array([["tourney.start", _tourney_start], ["tourney.end", _back_in_yard]])
 		for mode in SMOKE:
 			steps.append(["mode.%s" % mode, _mode.bind(mode)])
@@ -169,6 +170,12 @@ func _ffa_start() -> void:
 	var flow := await _flow()
 	k.check("ffa.guest", ok and int(m().series.get("n", 0)) == 3 and m().fight_status() != "" and flow > 5.0, "the free for all is drawn here from the host's snapshots: three rounds, a state line", "%d fighters, series %s, '%s', %d snapshots a second" % [m().entities.size() if m() else 0, str(m().series) if m() else "", m().fight_status() if m() else "", int(flow)])
 	await k.shot("ffa")
+
+## A free for all on a clock as the host's snapshots draw it here: the clock on the state line, no rounds, the scoreboard of the host's `board` messages.
+func _ffa_timed_start() -> void:
+	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "ffa" and m().entities.size() >= 4, 40.0, "the free for all on a clock")
+	var board: bool = await k.until(func(): return m() != null and m().board.size() >= 3, 20.0, "the scoreboard")
+	k.check("ffat.guest", ok and board and m().series.is_empty() and m().fight_status().contains("left"), "the free for all on a clock is drawn here: the clock on the state line, the scoreboard from the host", "%d rows, '%s', series %s" % [m().board.size() if m() else 0, m().fight_status() if m() else "", str(m().series) if m() else ""])
 
 func _ffa_round2() -> void:
 	var ok: bool = await k.until(func(): return m() != null and not m().hold and m().mode == "ffa" and int(m().series.get("p", 0)) == 1, 40.0, "round 2")

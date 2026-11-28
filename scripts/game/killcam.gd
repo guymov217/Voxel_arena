@@ -185,6 +185,8 @@ func on_death(f, cause: String, last_hit: Dictionary, by = null, wname := "", th
 	if playing:
 		return
 	var killer = by if by != null else f.get("last_attacker")
+	if not is_instance_valid(killer):
+		killer = null   # (freed since the blow: a man who stood up again as a new body, a corpse carried off)
 	var kname = killer.display_name if killer and is_instance_valid(killer) and killer != f else null
 	var severed := 0
 	for p in f.parts:
