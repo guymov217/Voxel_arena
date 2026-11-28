@@ -1153,3 +1153,29 @@ round them is (array and closure allocations in `_off_clear_drawing`'s `depth`, 
 `_off_clear_drawing`'s search as one call (the engine's closest points of two segments reproduced in float32 and held against the engine's own), `_swivel_drawing` the same, `guard_reach`'s `atan2` (probably the dear thing in
 it, one for each voxel within the armour's reach: the sector it lies in could be told by cross products, `atan2` kept for the voxels near a sector's edge), the pieces' checks of `_clip_shoulder_guards` memoed on the armour piece, and the cones' shader
 parameters sent only when they change. Together about 1 ms of the 3.1, a tenth of this frame; none of it is the physics.
+
+## 31. The drawn arms of a man with both hands on a weapon, and a guard's reach, in the core
+
+The first cuts from section 30's list (drawing only, so the physics and the replay fingerprints are not in it; each held to the script's answer to the bit):
+
+- **`VoxelCore.off_clear`** (`extension/src/draw_arm.cpp`): `Fighter._off_clear_drawing`'s search for the turn of the hand on the haft below the guard hand (up to eleven turns of the arm about its line, each scored
+  by how deep it lies in his chest and in the guard arm), and the two parts' drawn turns after it. 36 microseconds a man (68 for a two-hander) became 7 (the call itself 9.5 for a two-hander, the script round it 5).
+- **`VoxelCore.swivel`**: `Fighter._swivel_drawing`'s, the guard hand's arm (and, for every man, the easing of the turn it has). The call is 5 microseconds; what is left of the 19 a man is the script that gathers
+  its numbers (the other arm as drawn, the weapon's place, the head's), 9 of it: 230 -> 190 microseconds a frame for thirteen men.
+- **`guard_reach`** tells the way round the arm a voxel lies in by the ways' edges (a cross product and a bisection over the 24) where the script's `atan2` would put it clear of every edge, and keeps the `atan2`
+  for the few that lie within a thousandth of a millionth of a turn of one, or on the axis; and it asks the row of a voxel before the rest of its place: 7.0 -> 4.0 microseconds a call at rest, 17 -> 14.5 in a melee
+  (where the dictionary reads in the script round it are a third of what is left).
+- **`VoxelCore.segments_closest`** is the engine's `Geometry3D.get_closest_points_between_segments` in the extension, because the searches ask it three times for each turn they try. It is **David Eberly's**, not
+  the Paul Bourke one the 3.x engine had (the first port of the other was off in four of five): held to the engine's own over 30,000 pairs, parallel ones, ones that share an end, points, and ties on a grid.
+
+`Greedy.draw_ok` says the loaded core has them; with an older one (the committed Linux library) the script's lines run, as before.
+
+**Measured** (thirteen men in armour in a melee, six of them with both hands on a weapon; the men's drawing cut in sections with timing marks, three runs each way, the same fight, `draw_ok` on and off): the men's
+drawing 2.37 / 2.46 / 2.33 ms a frame with the core, 2.88 / 3.06 / 2.73 without: -15 to -20%; the whole frame of the probe -4 to -9% (it has the physics step in it, 9-10 ms).
+
+**Held by**: `test_native_closest_points_of_segments_are_the_engines`, `test_native_drawn_arms_match_the_gdscript` (eight men with six two-handed weapons and two with shields, fighting; each man's off hand and guard
+hand asked in four ways, the turn to start from, the pace and the elbow as last drawn by turns, the seats shifted: some ten thousand askings, the turns and the drawn turns of the parts equal to the bit),
+`test_native_guard_reach_counts_the_ways_as_the_script_does_at_their_edges` (points on each edge of the ways and a hair either side), and the tests of section 29's list that draw.
+
+**Left of section 30's list**: the shoulder guards' script round `guard_reach` and `guard_cut_near` (860 microseconds a frame, 27 of them each call of `guard_cut_near`), the cones of `_limbs_in_armor` (270),
+the parts' loop (200), the grip (155), the bend (140) and the foot (90).

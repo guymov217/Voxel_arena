@@ -26,6 +26,46 @@ int64_t dr_posmod(int64_t a, int64_t b) {
 	return m < 0 ? m + b : m;
 }
 
+// The 24 ways round an arm, told without an atan2 (guard_reach's, for the voxels that come that far): `way` is floor((atan2(z, x) + PI) / TAU * 24) as the script counts it, found by which of the
+// ways' edges the point lies beyond (the cross product of the edge's direction with the point), or -1 where the point is too near an edge, or to the axis, for that to be told from the rounding of the
+// atan2 itself (a thousandth of a millionth of a turn of it): those are left to the script's own way of counting.
+struct DrWays24 {
+	double cx[25];
+	double sz[25];
+	DrWays24() {
+		for (int k = 0; k <= 24; k++) {
+			const double th = -DR_PI + (double)k * DR_TAU / 24.0;
+			cx[k] = std::cos(th);
+			sz[k] = std::sin(th);
+		}
+	}
+};
+
+inline int dr_way24(double x, double z) {
+	static const DrWays24 W;
+	const double rad = std::sqrt(x * x + z * z);
+	if (!(rad > 1e-9) || z == 0.0) {
+		return -1;
+	}
+	const double eps = 1e-9 * rad;
+	int lo = z > 0.0 ? 12 : 0;
+	int hi = z > 0.0 ? 23 : 11;
+	while (lo < hi) {
+		const int mid = (lo + hi + 1) / 2;
+		if (W.cx[mid] * z - W.sz[mid] * x >= 0.0) {
+			lo = mid;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	const double below = W.cx[lo] * z - W.sz[lo] * x;
+	const double above = W.cx[lo + 1] * z - W.sz[lo + 1] * x;
+	if (!(below > eps) || !(above < -eps)) {
+		return -1;
+	}
+	return lo;
+}
+
 // VoxelPart._arc_at (as bend.cpp has it).
 Vector3 dr_arc_at(real_t s, real_t b, const Vector3 &n, real_t theta, const Vector3 &tip, const Vector3 &pv) {
 	if (theta < 1e-4) {
@@ -68,18 +108,23 @@ PackedByteArray VoxelCore::guard_reach(const PackedVector3Array &pts, const Tran
 		if (!has_reach) {
 			continue;
 		}
-		const Vector3 q = to_arm.xform(p[k]);
-		const double fr = ((double)q.y - y0) / dy;
+		// (The row first, from the one of the point's three places it asks: most of a guard's voxels lie outside the rows of the arm's armour.)
+		const real_t qy = to_arm.basis.rows[1].dot(p[k]) + to_arm.origin.y;
+		const double fr = ((double)qy - y0) / dy;
 		if (fr < -0.5 || fr > (double)rows - 0.5) {
 			continue;
 		}
+		const Vector3 q = to_arm.xform(p[k]);
 		const double len = (double)Vector2(q.x, q.z).length();
 		if (!(len < far_all + pad)) {
 			continue;
 		}
 		int64_t ri = (int64_t)std::floor(fr);
 		ri = ri < 0 ? 0 : (ri > rows - 1 ? rows - 1 : ri);
-		const int64_t ai = dr_posmod((int64_t)std::floor((std::atan2((double)q.z, (double)q.x) + DR_PI) / DR_TAU * (double)na), na);
+		int64_t ai = na == 24 ? dr_way24((double)q.x, (double)q.z) : -1;
+		if (ai < 0) {
+			ai = dr_posmod((int64_t)std::floor((std::atan2((double)q.z, (double)q.x) + DR_PI) / DR_TAU * (double)na), na);
+		}
 		double far = 0.0;
 		for (int64_t d_r = -1; d_r <= 1; d_r++) {
 			const int64_t rr = ri + d_r;

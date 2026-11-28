@@ -135,6 +135,14 @@ public:
 	// arm_off_two: the drive of the hand that is on a haft below the guard hand (Fighter._drive_arm's first branch): its elbow routed, its two bones driven, the weight it bears and the pull of
 	// its end of the haft to where the swing wants it (two_front); `k` as arm_drive.cpp lists it.
 	void arm_off_two(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, const Vector3 &hand_point, const Vector3 &two_front, const Vector3 &t_pos, const Quaternion &t_rot, const Vector3 &shoulder_l, const Vector3 &torso_half, const PackedFloat64Array &k) const;
+	// The drawn turns of the arms of a man with both hands on one weapon (draw_arm.cpp; docs/PERF_RESEARCH.md, section 31): off_clear is Fighter._off_clear_drawing's search; segments_closest the engine's
+	// Geometry3D.get_closest_points_between_segments, here for the test that holds this port to it.
+	PackedVector3Array segments_closest(const Vector3 &p0, const Vector3 &p1, const Vector3 &q0, const Vector3 &q1) const;
+	Array off_clear(const Transform3D &tu, const Transform3D &tf, const Transform3D &tt, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &hand_point, const Vector3 &torso_half, const Vector3 &head_at,
+			const PackedVector3Array &guard, const Vector3 &up_shift, const Vector3 &fo_shift, const PackedFloat64Array &k) const;
+	// swivel is Fighter._swivel_drawing's: the guard hand's arm drawn turned about its line from the shoulder to the fist.
+	Array swivel(const Transform3D &tu, const Transform3D &tf, const Transform3D &tw, const Transform3D &torso_xf, const Vector3 &up_ca, const Vector3 &fo_pa, const Vector3 &hand_point, const Vector3 &torso_half,
+			const Vector3 &head_at, const PackedVector3Array &other_arm, const Vector3 &up_shift, const Vector3 &fo_shift, const Variant &swivel_e_in, const PackedFloat64Array &k) const;
 	bool leg_tail(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const PackedFloat64Array &k) const;
 	bool leg_tail_k(RigidBody3D *thigh, RigidBody3D *shin, RigidBody3D *torso, const Quaternion &thigh_q, const Quaternion &shin_q, const Vector3 &goal, const double *kk) const;
 	// The ground under him and the height his hips ride at (Fighter._ground_ride).

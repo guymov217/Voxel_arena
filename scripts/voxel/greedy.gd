@@ -23,6 +23,7 @@ static var bulk_ok := false   # and what is asked of every body in one go (Voxel
 static var cells_ok := false  # and a search of a part's voxels over the cells round the point only (VoxelCore.within_cells)
 static var flip_ok := false   # and the armour plates an arm's clip is to change, named in one call (VoxelCore.clip_plates_flip)
 static var vel_all_ok := false   # and the velocities of every body the combat lists, in one call (VoxelCore.record_vel_all)
+static var draw_ok := false   # and the men's drawn arms' searches (VoxelCore.off_clear, swivel; docs/PERF_RESEARCH.md, section 31)
 const DRIVE_API := 5   # the arguments the arms' and the legs' calls take, as this script hands them over (VoxelCore.drive_api: a library of another build is not asked)
 
 static func core() -> Object:
@@ -41,6 +42,7 @@ static func core() -> Object:
 			cells_ok = native.has_method("within_cells")
 			flip_ok = native.has_method("clip_plates") and native.has_method("clip_plates_flip")
 			vel_all_ok = bulk_ok and native.has_method("record_vel_all")
+			draw_ok = native.has_method("off_clear") and native.has_method("swivel") and native.has_method("segments_closest")
 		nc = native if use_native else null
 	return native if use_native else null
 

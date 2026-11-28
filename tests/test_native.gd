@@ -701,6 +701,201 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 6600 steps" % kept)
 	t.check(lines > 200 and driven_in > 40 and by_depth > 40 and laid > 80, "a thrust along the blade's line among them: %d steps with a line, %d of them past the drive, %d driven in depth by the mouse, %d with a crosshair to lay it on" % [lines, driven_in, by_depth, laid])
 
+## Which fine voxels of a shoulder guard lie under the arm's armour (VoxelCore.guard_reach) tells the way round the arm a voxel lies in without an atan2 where it can: it has to count the same as the
+## script's atan2 does at the very edges of the ways, on the axis, and on the lines the way's edges lie on: points laid on each edge of the 24 ways and a hair either side of it, on the axes, and at the origin.
+func test_native_guard_reach_counts_the_ways_as_the_script_does_at_their_edges() -> void:
+	var nc = Greedy.core()
+	if nc == null or not nc.has_method("guard_reach"):
+		t.check(true, "no native core built: the GDScript fallback runs")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 61
+	var off := 0
+	var total := 0
+	var inside := 0
+	for k in 40:
+		var rows := rng.randi_range(1, 6)
+		var r := PackedFloat32Array()
+		r.resize(rows * Fighter.REACH_NA)
+		for i in r.size():
+			r[i] = rng.randf_range(0.03, 0.11) if rng.randf() < 0.8 else 0.0
+		var reach := {"key": "", "rows": rows, "y0": 0.0, "dy": 0.1, "r": r}
+		var pts := PackedVector3Array()
+		for e in 25:
+			var edge := -PI + float(e) * TAU / float(Fighter.REACH_NA)
+			for d in [0.0, 1e-15, -1e-15, 1e-13, -1e-13, 1e-11, -1e-11, 1e-9, -1e-9, 1e-7, -1e-7, 1e-5, -1e-5]:
+				for rad in [0.001, 0.05, 0.09, 0.1, 0.13]:
+					pts.append(Vector3(rad * cos(edge + d), rng.randf_range(0.0, 0.1 * rows - 0.01), rad * sin(edge + d)))
+		for y in [0.0, 0.05]:
+			for a in [Vector2(0, 0), Vector2(0.05, 0), Vector2(-0.05, 0), Vector2(0, 0.05), Vector2(0, -0.05), Vector2(-0.05, -0.0), Vector2(1e-12, 1e-12), Vector2(-1e-12, 1e-12)]:
+				pts.append(Vector3(a.x, y, a.y))
+		var pad := rng.randf_range(0.0, 0.02)
+		var want := PackedByteArray()
+		want.resize(pts.size())
+		for i in pts.size():
+			if Fighter._in_reach(reach, pts[i], pad):
+				want[i] = 1
+				inside += 1
+		var got: PackedByteArray = nc.guard_reach(pts, Transform3D.IDENTITY, r, rows, Fighter.REACH_NA, 0.0, 0.1, pad)
+		total += pts.size()
+		if got != want:
+			off += 1
+	t.check(off == 0, "the voxels of a guard under the arm's armour, those at the edges of its ways among them, as the script's atan2 has them (%d of 40 tables differ)" % off)
+	t.check(inside > 5000, "and many of them were: %d of %d points under the armour" % [inside, total])
+
+## The closest points of two segments as the C++ core has them are the engine's, to the bit (the Geometry3D call of Fighter._arms_sunk, which the drawn arms' searches make dozens of times a frame,
+## docs/PERF_RESEARCH.md section 31): segments of every size and place, parallel ones, ones that share an end, ones that are a point.
+func test_native_closest_points_of_segments_are_the_engines() -> void:
+	var nc = Greedy.core()
+	if nc == null or not Greedy.draw_ok:
+		t.check(true, "no native core with the drawn arms' searches built: the GDScript runs")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 53
+	var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
+	var off := 0
+	var kinds := {}
+	for k in 30000:
+		var r: float = [1.0, 0.2, 5.0, 0.01][k % 4]
+		var p0: Vector3 = rv.call(r)
+		var p1: Vector3 = rv.call(r)
+		var q0: Vector3 = rv.call(r)
+		var q1: Vector3 = rv.call(r)
+		var kind := k % 11
+		match kind:
+			1:
+				q0 = p0 + (p1 - p0) * rng.randf_range(0.2, 0.8)
+				q1 = q0 + (p1 - p0) * rng.randf_range(-1.5, 1.5)   # (parallel, on the one line)
+			2:
+				q0 += p0 - q0 + (p1 - p0).cross(Vector3(0, 1, 0)).normalized() * 0.1
+				q1 = q0 + (p1 - p0) * rng.randf_range(-1.0, 1.0)   # (parallel, beside it)
+			3:
+				q0 = p1   # (they share an end)
+			4:
+				p1 = p0   # (the first is a point)
+			5:
+				q1 = q0   # (the second is a point)
+			6:
+				p1 = p0
+				q1 = q0   # (both are)
+			7:
+				q1 = p0
+				q0 = p1   # (the same segment the other way round)
+			8:
+				q0 = Vector3(snappedf(q0.x, 0.1), snappedf(q0.y, 0.1), snappedf(q0.z, 0.1))
+				q1 = q0 + Vector3(0.1, 0, 0)   # (on a grid: the ties)
+				p0 = Vector3(snappedf(p0.x, 0.1), snappedf(p0.y, 0.1), snappedf(p0.z, 0.1))
+				p1 = p0 + Vector3(0, 0, 0.1)
+		kinds[kind] = int(kinds.get(kind, 0)) + 1
+		var want: PackedVector3Array = Geometry3D.get_closest_points_between_segments(p0, p1, q0, q1)
+		var got: PackedVector3Array = nc.segments_closest(p0, p1, q0, q1)
+		if var_to_bytes(want) != var_to_bytes(got):
+			off += 1
+	t.check(off == 0, "the closest points of two segments are the engine's, to the bit (%d of 30000 differ)" % off)
+	t.check(kinds.size() == 11, "of every kind (%s)" % str(kinds))
+
+## The drawn turns of a man's arms (Fighter._off_clear_drawing: the hand on a haft below the guard hand; _swivel_drawing: the guard hand's, and every man's easing of it): the searches in the C++ core
+## (VoxelCore.off_clear, swivel) give the turns the script's give, and the parts' drawn turns after them, to the bit: men with both hands on a weapon and men with a shield fighting, a turn to start
+## from and a pace of drawing by turns, their parts' seats shifted.
+func test_native_drawn_arms_match_the_gdscript() -> void:
+	var nc = Greedy.core()
+	if nc == null or not Greedy.draw_ok:
+		t.check(true, "no native core with the drawn arms' searches built: the GDScript runs")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 59
+	var m := Match.new()
+	add_child(m)
+	m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": {"main": "zweihander", "off": ""}})
+	var kit := [["zweihander", ""], ["warhammer", ""], ["trident", ""], ["spear", ""], ["longsword", ""], ["falx", ""], ["gladius", "scutum"], ["mace", "roundShield"]]
+	for i in kit.size():
+		var a := TAU * i / kit.size()
+		m.spawn_fighter({"kind": "bot", "name": "P%d" % i, "loadout": {"main": kit[i][0], "off": kit[i][1], "armor": ["helmet", "lorica", "manica", "greaves"] if i % 2 == 0 else []}, "team": i % 2,
+			"pos": Vector3(sin(a) * 2.4, 0.1, cos(a) * 2.4), "yaw": a + PI, "diff": 0.8})
+	var asked := 0
+	var turned := 0
+	var kept := 0
+	var swiv_asked := 0
+	var swiv_turned := 0
+	var swiv_kept := 0
+	var swiv_ok := 0
+	var bad := []
+	for s in 420:
+		await get_tree().physics_frame
+		if s < 30 or s % 2 != 0:
+			continue
+		for e in m.entities:
+			var f: Fighter = e.f
+			if not is_instance_valid(f) or not f.alive:
+				continue
+			var up_o: VoxelPart = f.arm[f.two_off()].upper
+			var fo_o: VoxelPart = f.arm[f.two_off()].fore
+			var up_m: VoxelPart = f.arm[f.two_side].upper
+			var fo_m: VoxelPart = f.arm[f.two_side].fore
+			for variant in 4:
+				var interp := variant % 2 == 0
+				var dt: float = [0.0, 1.0 / 120.0, 1.0 / 60.0, 0.02][variant]
+				var turn_from: float = [0.0, rng.randf_range(-1.3, 1.3), 0.7, -0.4][variant]
+				var swiv_from: float = [0.0, rng.randf_range(-3.0, 3.0), 3.1, -2.9][variant]
+				var elbow_from = null if variant % 2 == 0 else Vector3(rng.randf_range(-0.3, 0.3), rng.randf_range(-0.4, 0.0), rng.randf_range(-0.3, 0.3))
+				if f.two_handed:
+					var res := []
+					for native in [false, true]:
+						Greedy.draw_ok = native
+						f.off_turn_a = turn_from
+						up_o.draw_turn = Transform3D()
+						fo_o.draw_turn = Transform3D()
+						up_o.draw_shift = Vector3(0.004, -0.003, 0.002) * float(variant)
+						fo_o.draw_shift = Vector3(-0.002, 0.003, 0.005) * float(variant)
+						f._off_clear_drawing(interp, dt)
+						res.append(var_to_bytes([f.off_turn_a, up_o.draw_turn, fo_o.draw_turn]))
+					Greedy.draw_ok = true
+					asked += 1
+					if res[0] != res[1]:
+						bad.append("off hand of %s, frame %d, variant %d: %s / %s" % [f.name, s, variant, str(bytes_to_var(res[0])), str(bytes_to_var(res[1]))])
+					elif up_o.draw_turn != Transform3D():
+						turned += 1
+					if absf(f.off_turn_a) > 0.0:
+						kept += 1
+				var res2 := []
+				for native in [false, true]:
+					Greedy.draw_ok = native
+					f.swivel_a = swiv_from
+					f.swivel_e = elbow_from
+					up_m.draw_turn = Transform3D()
+					fo_m.draw_turn = Transform3D()
+					up_m.draw_shift = Vector3(0.004, -0.003, 0.002) * float(variant)
+					fo_m.draw_shift = Vector3(-0.002, 0.003, 0.005) * float(variant)
+					f._swivel_drawing(interp, dt)
+					res2.append(var_to_bytes([f.swivel_a, f.swivel_e, up_m.draw_turn, fo_m.draw_turn]))
+				Greedy.draw_ok = true
+				swiv_asked += 1
+				if res2[0] != res2[1]:
+					bad.append("guard hand of %s, frame %d, variant %d: %s / %s" % [f.name, s, variant, str(bytes_to_var(res2[0])), str(bytes_to_var(res2[1]))])
+				elif up_m.draw_turn != Transform3D():
+					swiv_turned += 1
+				if absf(f.swivel_a) > 0.0:
+					swiv_kept += 1
+				if f.two_handed:
+					swiv_ok += 1
+				# (And put back as they were: nothing here is his to keep.)
+				up_o.draw_turn = Transform3D()
+				fo_o.draw_turn = Transform3D()
+				up_m.draw_turn = Transform3D()
+				fo_m.draw_turn = Transform3D()
+				up_o.draw_shift = Vector3.ZERO
+				fo_o.draw_shift = Vector3.ZERO
+				up_m.draw_shift = Vector3.ZERO
+				fo_m.draw_shift = Vector3.ZERO
+				f.off_turn_a = 0.0
+				f.swivel_a = 0.0
+				f.swivel_e = null
+	Greedy.draw_ok = true
+	t.check(bad.is_empty(), "the drawn turns of the arms, the script's and the core's, to the bit (%d of %d differ: %s)" % [bad.size(), asked + swiv_asked, ", ".join(PackedStringArray(bad.slice(0, 3)))])
+	t.check(asked > 800 and turned > 100 and kept > 100, "the hand on a haft was at work: %d askings, %d turned the arm, %d left a turn on it" % [asked, turned, kept])
+	t.check(swiv_asked > 2000 and swiv_ok > 800 and swiv_turned > 100 and swiv_kept > 100, "and the guard hand's: %d askings, %d of men with both hands on a weapon, %d turned the arm, %d left a turn on it" % [swiv_asked, swiv_ok, swiv_turned, swiv_kept])
+	m.queue_free()
+
 ## The plates of an arm's armour the clip is to change, named in one call (VoxelCore.clip_plates_flip for Fighter._clip_arm_armor, docs/PERF_RESEARCH.md, section 27) are the plates the script's
 ## lines turn: each drawn plate inside the box of his chest's armour and within his outline there (or the box alone, no outline) is hidden, the others drawn, and a plate whose clip
 ## is not what that says is named, nothing else. Boxes of every size, plates on the faces of it and a hair outside, outlines of every kind, plates that are not there and a point that is no number.

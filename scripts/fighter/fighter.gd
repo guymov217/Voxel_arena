@@ -5590,6 +5590,7 @@ func _grip_drawing(interp: bool) -> void:
 const OFF_CLEAR := 0.07
 const OFF_STAY := 0.05   # what a radian away from the turn it has costs another turn (m sunk)
 var off_turn_a := 0.0
+var _draw_k := PackedFloat64Array([1.0, 0.0, 0.0, OFF_CLEAR, OFF_STAY, ARMS_DEPTH, ARMS_ROOM, ARMS_WRIST, SWIVEL_FACE, 0.0])   # the scalars of VoxelCore.off_clear (draw_arm.cpp): S, the turn, dt, the constants, whether he has a head
 func _off_clear_drawing(interp: bool, dt: float) -> void:
 	var side := two_off()
 	if not arm.has(side) or not swivel_on or not two_handed or torso.severed or giant_foe():
@@ -5606,6 +5607,20 @@ func _off_clear_drawing(interp: bool, dt: float) -> void:
 	tu.origin += up.draw_shift
 	tf.origin += fo.draw_shift
 	tt.origin += torso.draw_shift
+	# (The search in one call of the C++ core, to the bit what follows here: VoxelCore.off_clear, docs/PERF_RESEARCH.md section 31.)
+	var nc_d := Greedy.nc
+	if nc_d != null and Greedy.draw_ok:
+		var hd_ok: bool = head and not head.severed and not head.missing
+		_draw_k[0] = S
+		_draw_k[1] = off_turn_a
+		_draw_k[2] = dt
+		_draw_k[9] = 1.0 if hd_ok else 0.0
+		var res: Array = nc_d.off_clear(tu, tf, tt, up.ca, fo.pa, hand_point, torso.half_ext, head.global_position if hd_ok else Vector3.ZERO, PackedVector3Array(_arm_drawn(two_side, interp)), up.draw_shift, fo.draw_shift, _draw_k)
+		off_turn_a = res[0]
+		if res.size() > 1:
+			up.draw_turn = res[1]
+			fo.draw_turn = res[2]
+		return
 	var s0: Vector3 = tu * up.ca
 	var e0: Vector3 = tu * fo.pa
 	var h0: Vector3 = tf * hand_point
@@ -5729,6 +5744,7 @@ var swivel_e = null        # the elbow as last drawn, from the shoulder (the tur
 const SWIVEL_STICK := 2.0
 const SWIVEL_RATE := 9.0
 static var swivel_on := true   # (probes: off, to see the arm as the bodies hold it)
+var _swivel_k := PackedFloat64Array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, SWIVEL_BEND, SWIVEL_NONE, SWIVEL_FACE, SWIVEL_ARMS, SWIVEL_STICK, SWIVEL_RATE, ARMS_ROOM, ARMS_WRIST])   # the scalars of VoxelCore.swivel (draw_arm.cpp)
 func _swivel_drawing(interp: bool, dt: float) -> void:
 	var side := two_side
 	# (Not a giant's: his arm is long enough that the turn drew it a third of a metre off where it
@@ -5750,6 +5766,32 @@ func _swivel_drawing(interp: bool, dt: float) -> void:
 	var tf := fo.get_global_transform_interpolated() if interp else fo.global_transform
 	tu.origin += up.draw_shift
 	tf.origin += fo.draw_shift
+	# (The search in one call of the C++ core, to the bit what follows here: VoxelCore.swivel, docs/PERF_RESEARCH.md section 31.)
+	var nc_d := Greedy.nc
+	if nc_d != null and Greedy.draw_ok:
+		var tw_n := Transform3D.IDENTITY
+		var other_n := PackedVector3Array()
+		var head_n := Vector3.ZERO
+		var head_ok := false
+		if ok:
+			tw_n = (w as Weapon).get_global_transform_interpolated() if interp else (w as Weapon).global_transform
+			other_n = PackedVector3Array(_arm_drawn(two_off(), interp))
+			head_ok = head and not head.severed and not head.missing
+			if head_ok:
+				head_n = head.global_position
+		_swivel_k[0] = S
+		_swivel_k[1] = swivel_a
+		_swivel_k[2] = dt
+		_swivel_k[3] = 1.0 if ok else 0.0
+		_swivel_k[4] = -1.0 if side == "R" else 1.0
+		_swivel_k[5] = 1.0 if head_ok else 0.0
+		var res: Array = nc_d.swivel(tu, tf, tw_n, torso.global_transform, up.ca, fo.pa, hand_point, torso.half_ext, head_n, other_n, up.draw_shift, fo.draw_shift, swivel_e, _swivel_k)
+		swivel_a = res[0]
+		swivel_e = res[1]
+		if res.size() > 2:
+			up.draw_turn = res[2]
+			fo.draw_turn = res[3]
+		return
 	var s0: Vector3 = tu * up.ca
 	var e0: Vector3 = tu * fo.pa
 	var h0: Vector3 = tf * hand_point

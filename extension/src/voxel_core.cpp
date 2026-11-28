@@ -61,6 +61,9 @@ void VoxelCore::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("arm_elbow", "upper", "torso", "target_w", "shoulder_w", "fore_dir", "t_rot", "e_was", "sculpt", "o_up", "elbow_face", "torso_half", "k"), &VoxelCore::arm_elbow);
 	ClassDB::bind_method(D_METHOD("arm_armed", "upper", "fore", "torso", "head", "w", "elbow_joint", "hp", "e_was", "hold_q", "grip_q", "t_pos", "t_rot", "yaw_q", "shoulder_l", "hand_point", "torso_half", "head_half", "sculpt", "o_up", "o_fo", "refs", "side", "up_half", "up_pa", "up_ca", "fo_pa", "fo_ca", "k"), &VoxelCore::arm_armed);
 	ClassDB::bind_method(D_METHOD("arm_off_two", "upper", "fore", "torso", "hand_point", "two_front", "t_pos", "t_rot", "shoulder_l", "torso_half", "k"), &VoxelCore::arm_off_two);
+	ClassDB::bind_method(D_METHOD("segments_closest", "p0", "p1", "q0", "q1"), &VoxelCore::segments_closest);
+	ClassDB::bind_method(D_METHOD("off_clear", "tu", "tf", "tt", "up_ca", "fo_pa", "hand_point", "torso_half", "head_at", "guard", "up_shift", "fo_shift", "k"), &VoxelCore::off_clear);
+	ClassDB::bind_method(D_METHOD("swivel", "tu", "tf", "tw", "torso_xf", "up_ca", "fo_pa", "hand_point", "torso_half", "head_at", "other_arm", "up_shift", "fo_shift", "swivel_e", "k"), &VoxelCore::swivel);
 	ClassDB::bind_method(D_METHOD("leg_tail", "thigh", "shin", "torso", "thigh_q", "shin_q", "goal", "k"), &VoxelCore::leg_tail);
 	ClassDB::bind_method(D_METHOD("ground_ride", "fighter", "torso", "thigh_l", "shin_l", "thigh_r", "shin_r", "space", "ray_all", "ray_sand", "ft_l", "ft_r", "parts", "t_pos", "t_rot", "pa_l", "pa_r", "k"), &VoxelCore::ground_ride);
 	ClassDB::bind_method(D_METHOD("leg_plant", "fighter", "thigh", "shin", "o_shin", "torso", "space", "ray_all", "ray_sand", "ft", "o_ft", "t_pos", "t_rot", "yaw_q", "move_dir", "v_smooth", "pa", "stance", "k"), &VoxelCore::leg_plant);
