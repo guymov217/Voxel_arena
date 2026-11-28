@@ -58,7 +58,6 @@ uniform float metal_rough : hint_range(0.0, 1.0) = 0.0;  // the least roughness 
 uniform float sky_hold : hint_range(0.0, 1.0) = 0.0;     // ARMOUR_LIGHT: how far a piece's top takes the light of what is round it as its sides do (see env_n)
 instance uniform float held_item = 0.0;   // a weapon (Weapon._build_mesh): its leather grip is stitched
 instance uniform float sweat = 0.0;       // the sheen of sweat on the skin, 0..1 (Physique.live)
-instance uniform float pallor = 0.0;      // the skin gone pale from blood lost, 0..1 (Physique.pale)
 instance uniform float bare_glow = 0.0;   // a beast's wound (FineBody._wound_mm): what it bares shows as itself in the shade too
 // A knee or an elbow under the smooth skin (Fighter._bend_drawing): the two parts that meet there
 // are drawn as one skin bent round the joint, not as two stiff pieces turned on one another. All
@@ -389,13 +388,6 @@ void fragment() {
 	if (k == 0) {
 		// Skin: each voxel a touch warmer or cooler, as skin is.
 		c *= vec3(1.0 + 0.05 * (seed2 - 0.5), 1.0, 1.0 - 0.05 * (seed2 - 0.5));
-		// Pale from blood lost: the warmth drained out of the skin toward a waxen grey (only what
-		// is the colour of skin: the blood on it stays red).
-		if (pallor > 0.0) {
-			float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-			float skinness = clamp((c.g / max(c.r, 1e-4) - 0.22) * 5.0, 0.0, 1.0);
-			c = mix(c, vec3(lum) * vec3(1.0, 1.03, 1.08) * 1.12, pallor * 0.62 * skinness);
-		}
 	} else if (k == 1) {
 		// Cloth: the weave.
 		c *= 0.965 + 0.07 * (0.5 + 0.5 * sin(fuv.x * 28.0) * sin(fuv.y * 28.0));

@@ -1293,7 +1293,6 @@ static func talk(f, state: int) -> void:
 ## face up for a moment (eyes squeezed, brows down, teeth bared); his chest rises and falls,
 ## quicker and deeper as he runs out of breath. A dead man does none of it.
 static func live(f, dt: float) -> void:
-	pale(f, dt)
 	var head: VoxelPart = f.head
 	if head == null or not is_instance_valid(head) or head.missing or head.severed:
 		return
@@ -1388,33 +1387,6 @@ static func express(f, shut: bool, hurt: bool, cry := false) -> void:
 	head.set_meta("expr_state", state)
 	_redraw(head, list)
 	FineHead.mood(head, shut, hurt, int(head.get_meta("talk_state", 0)), cry)
-
-## Pale as his blood runs out (and a dead man paler): the colour drained out of his skin, slowly.
-## Drawing only: the body shader's pallor, on all he is drawn with.
-static func pale(f, dt: float) -> void:
-	if f is Beast:
-		return
-	var want := clampf((72.0 - float(f.blood)) / 52.0, 0.0, 1.0)
-	if not f.alive:
-		want = maxf(want, 0.55)
-	var pl := float(f.get_meta("pallor", 0.0))
-	if pl == want:
-		return
-	pl = move_toward(pl, want, dt * 0.2)
-	f.set_meta("pallor", pl)
-	if absf(pl - float(f.get_meta("pallor_drawn", 0.0))) < 0.03 and pl != want:
-		return
-	f.set_meta("pallor_drawn", pl)
-	for p in f.parts:
-		if is_instance_valid(p):
-			skin_param(p, "pallor", pl)
-
-## An instance uniform of the body's shader on everything a part is drawn with (its boxes, its
-## fine skin, a wound's cells, a bent limb's far end, a jaw).
-static func skin_param(p: VoxelPart, param: String, v: float) -> void:
-	for gi in [p.mmi, p.dangle_mesh, p.jaw_mesh, p.fine.get("mi"), p.fine.get("far_mi"), p.fine.get("wmi"), p.fine.get("jaw_mi")]:
-		if gi != null and is_instance_valid(gi) and gi is GeometryInstance3D:
-			(gi as GeometryInstance3D).set_instance_shader_parameter(param, v)
 
 ## The front of his head: face grid (x, y) -> voxel, kept; and the colour of his eyelids (his
 ## skin there, a shade darker).

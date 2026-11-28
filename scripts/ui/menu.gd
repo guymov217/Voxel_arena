@@ -1250,7 +1250,8 @@ func _bag_clean(raw) -> Dictionary:
 func _training_bag(v: VBoxContainer) -> void:
 	var bag := _bag_clean(training.get("bag", {}))
 	training.bag = bag
-	v.add_child(UIStyle.label(Loc.t("YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds") % [bag.size(), TRAINING_BAG_MAX], 13, UIStyle.BRONZE))
+	var head := UIStyle.label("", 13, UIStyle.BRONZE)
+	v.add_child(head)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 470)
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1263,14 +1264,24 @@ func _training_bag(v: VBoxContainer) -> void:
 	grid.add_theme_constant_override("v_separation", 8)
 	scroll.add_child(grid)
 	var table: Dictionary = Data.shop.get("throwables", {})
+	# (Every tile as it stands, to be changed in place: a + or a − used to build the whole screen again, and the list stood at the top once more each time, user.)
+	var tiles := []
+	var refresh := func() -> void:
+		head.text = Loc.t("YOUR BAG · free in training · keys 1 to 9 · %d of %d kinds") % [bag.size(), TRAINING_BAG_MAX]
+		for t in tiles:
+			var have := int(bag.get(t.id, 0))
+			(t.style as StyleBoxFlat).border_color = UIStyle.GOLD if have > 0 else UIStyle.BRONZE_DARK
+			(t.name as Label).add_theme_color_override("font_color", UIStyle.TEXT if have > 0 else UIStyle.MUTED)
+			(t.count as Label).text = str(have)
+			(t.count as Label).add_theme_color_override("font_color", UIStyle.GOLD if have > 0 else UIStyle.MUTED)
+			(t.minus as Button).disabled = have == 0
+			(t.plus as Button).disabled = not Throwables.bag_has_room(bag, t.id)
 	for id in table:
-		var have := int(bag.get(id, 0))
 		var item_id: String = id
 		var tile := PanelContainer.new()
 		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var st := StyleBoxFlat.new()
 		st.bg_color = Color(0.1, 0.075, 0.055, 0.95)
-		st.border_color = UIStyle.GOLD if have > 0 else UIStyle.BRONZE_DARK
 		st.set_border_width_all(1)
 		st.set_corner_radius_all(6)
 		st.content_margin_left = 8; st.content_margin_right = 8; st.content_margin_top = 4; st.content_margin_bottom = 4
@@ -1284,7 +1295,7 @@ func _training_bag(v: VBoxContainer) -> void:
 		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		tex.custom_minimum_size = Vector2(40, 40)
 		row.add_child(tex)
-		var nm := UIStyle.label(str(table[id].get("name", id)), 15, UIStyle.TEXT if have > 0 else UIStyle.MUTED)
+		var nm := UIStyle.label(str(table[id].get("name", id)), 15, UIStyle.MUTED)
 		nm.autowrap_mode = TextServer.AUTOWRAP_OFF
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.custom_minimum_size = Vector2(150, 0)
@@ -1296,11 +1307,10 @@ func _training_bag(v: VBoxContainer) -> void:
 			if int(b[item_id]) == 0:
 				b.erase(item_id)
 			Save.set_value("training", training)
-			show_screen("training"))
+			refresh.call())
 		minus.custom_minimum_size = Vector2(36, 34)
-		minus.disabled = have == 0
 		row.add_child(minus)
-		var cnt := UIStyle.label(str(have), 17, UIStyle.GOLD if have > 0 else UIStyle.MUTED)
+		var cnt := UIStyle.label("", 17, UIStyle.MUTED)
 		cnt.custom_minimum_size = Vector2(26, 0)
 		cnt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_child(cnt)
@@ -1309,12 +1319,13 @@ func _training_bag(v: VBoxContainer) -> void:
 			if Throwables.bag_has_room(b, item_id):
 				b[item_id] = int(b.get(item_id, 0)) + 1
 			Save.set_value("training", training)
-			show_screen("training"))
+			refresh.call())
 		plus.custom_minimum_size = Vector2(36, 34)
-		plus.disabled = not Throwables.bag_has_room(bag, item_id)
 		row.add_child(plus)
 		grid.add_child(tile)
+		tiles.append({"id": item_id, "style": st, "name": nm, "count": cnt, "minus": minus, "plus": plus})
 		Thumbs.item(tex, id)   # once it is in the tree, so the picture can be made for it
+	refresh.call()
 
 ## The forge from the main menu: the smith's forge as it is, to design weapons and keep them in
 ## My designs; nothing is taken from here or paid for (the smith makes a design in the campaign).
