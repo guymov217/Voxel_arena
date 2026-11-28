@@ -1125,3 +1125,31 @@ the two-handed arms run in the script, the same fight to the bit. **To do on a m
 `--test test_native` there (the test reports the third pass's count) and commit `native/bin/libvoxelcore.linux.template_release.x86_64.so`.
 
 **Left** (all exact): an archer's arms, a shove's, a crawler's (about 1 million a fighting step together), the two legs' calls' glue, the kick.
+
+## 30. Where a frame's script work goes (the men's drawing), measured
+
+The owner's reports put the men's `_process` at 4.2 ms of a frame's 8.6-8.9 ms rest (section 28), so it is as large a piece of a frame as the step is of the physics. Measured on this machine, with the
+timing marks of a scratch copy (`Fighter._process_frame` cut in sections; thirteen men in armour in a melee, six of them with both hands on a weapon, a frame a step, no window): the frame is 12.5 ms, the
+men's drawing 3.1 ms of it. In microseconds a frame for the thirteen (a man's share in brackets):
+
+| piece | us a frame | per man |
+|---|---|---|
+| `_clip_shoulder_guards` (of `_clip_arm_armor`, 1330 in all) | 860 | 65 |
+| &nbsp;&nbsp;`guard_hidden`: `guard_reach` (C++) 17 us a call, `guard_cut_near` (C++) 27 us a call, the script round them 4 | 520-560 | 47 a call |
+| &nbsp;&nbsp;the turn loop (`bytes_changed`, the voxels' places, `count`), `_arm_reach`, the sides' heads, the pieces' checks | 130, 85, 75, 95 | |
+| `_limbs_in_armor` (the cones of both arms into the trunk's shells: 4 shader parameters a shell) | 271 | 22 |
+| the arms' plate loop of `_clip_arm_armor` | 198 | 16 |
+| `_off_clear_drawing` (only the six two-handed men: 68 us each) | 450 | 36 |
+| `_swivel_drawing` | 230 | 18 |
+| `_seat_drawing`'s parts loop, the weapons' | 200, 59 | 15, 5 |
+| `_grip_drawing` | 155 | 12 |
+| `_bend_drawing`, `_foot_drawing`, `_draw_joint_caps` | 140, 90, 77 | 11, 7, 6 |
+| the parts' own `_draw_at` (130 parts, 2.0 us each: the engine's property sets of the part, its skin and what is drawn with it) | 260 | 20 |
+
+A call of `get_global_transform_interpolated()` is 57 nanoseconds (a plain `global_transform` read 187, `global_position` 52): the transforms the functions ask for again and again are not what costs, the script
+round them is (array and closure allocations in `_off_clear_drawing`'s `depth`, three `Geometry3D.get_closest_points_between_segments` calls for each of its up to eleven turns).
+
+**What it would take** (all exact; drawing only, so the replay fingerprints stay as they are and each port is held by a test that sets the script's answer beside the core's on random placings):
+`_off_clear_drawing`'s search as one call (the engine's closest points of two segments reproduced in float32 and held against the engine's own), `_swivel_drawing` the same, `guard_reach`'s `atan2` (probably the dear thing in
+it, one for each voxel within the armour's reach: the sector it lies in could be told by cross products, `atan2` kept for the voxels near a sector's edge), the pieces' checks of `_clip_shoulder_guards` memoed on the armour piece, and the cones' shader
+parameters sent only when they change. Together about 1 ms of the 3.1, a tenth of this frame; none of it is the physics.
