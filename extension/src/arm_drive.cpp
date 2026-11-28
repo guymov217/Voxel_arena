@@ -1848,6 +1848,103 @@ PackedFloat64Array VoxelCore::ground_ride(Object *fighter, RigidBody3D *torso, R
 	return out;
 }
 
+// The hand on the haft below the guard hand (Fighter._drive_arm's first branch, for a man with both hands on one weapon): its elbow bent out to its own side, down and a little back of
+// the line from the shoulder to the hand (a giant's arm is pointed at its hand instead), the upper arm rolled so that the hinge bends toward the hand, the weight it bears, and its end
+// of the haft pulled to where the swing wants it (`two_front`, where given). The script has seen to the arm being whole and the weapon being held in two hands.
+// k: 0 S, 1 MS, 2 af, 3 dt, 4 gravity, 5 on_ground (1/0), 6 stam_f, 7 blood_f, 8 the left arm (1/0), 9 lu (UPPER_LEN * S), 10 lf (FORE_LEN * S), 11 the upper arm's nominal mass,
+// 12 the forearm's, 13 two_front given (1/0), 14 the guard hand's weapon's mass, 15 that weapon is there (1/0).
+void VoxelCore::arm_off_two(RigidBody3D *upper, RigidBody3D *fore, RigidBody3D *torso, const Vector3 &hand_point, const Vector3 &two_front, const Vector3 &t_pos, const Quaternion &t_rot, const Vector3 &shoulder_l, const Vector3 &torso_half, const PackedFloat64Array &k) const {
+	if (upper == nullptr || fore == nullptr || torso == nullptr || k.size() < 16) {
+		return;
+	}
+	const double *kk = k.ptr();
+	const double S = kk[0], MS = kk[1], af = kk[2], dt = kk[3], gravity = kk[4], stam_f = kk[6], blood_f = kk[7];
+	const bool on_ground = kk[5] != 0.0, left = kk[8] != 0.0;
+	const double lu_l = kk[9], lf_l = kk[10];
+	const double up_nominal = kk[11], fo_nominal = kk[12];
+	const bool front_given = kk[13] != 0.0, w_two_there = kk[15] != 0.0;
+	const double w_two_mass = kk[14];
+	const Vector3 hand_l = fore->get_global_transform().xform(hand_point);
+	const Vector3 sh_l = t_pos + t_rot.xform(shoulder_l);
+	const double sx_l = left ? 1.0 : -1.0; // (its own side: the left +x)
+	const Vector3 to_h = hand_l - sh_l;
+	const double dist_h = gd_maxf(0.05, (double)to_h.length());
+	const Vector3 line = to_h / (real_t)dist_h;
+	const Vector3 down(0, -1, 0);
+	if (S >= 1.6) {
+		// A giant's off arm keeps the old drive, pointed at its hand with the upper arm pushed down.
+		{
+			const double max_t = 50.0 * af * MS * S;
+			if (max_t > 0.0) {
+				pd_axis(upper, down, eng_normalized(line + Vector3(0, (real_t)-0.3, 0)), 10.0, 0.8, max_t, dt, 1.0, Vector3());
+			}
+		}
+		{
+			const double max_t = 30.0 * af * MS * S;
+			if (max_t > 0.0) {
+				pd_axis(fore, down, line, 8.0, 0.8, max_t, dt, 1.0, Vector3());
+			}
+		}
+	} else {
+		const double cos_a = ad_clampf((lu_l * lu_l + dist_h * dist_h - lf_l * lf_l) / (2.0 * lu_l * dist_h), -1.0, 1.0);
+		const double sin_a = std::sqrt(gd_maxf(0.0, 1.0 - cos_a * cos_a));
+		Vector3 elbow_dir_l;
+		Vector3 elbow_l;
+		// Out, down and a little back; where that elbow would sit in the chest, down and forward instead.
+		const Vector3 prefs[2] = { Vector3((real_t)(0.5 * sx_l), (real_t)-0.7, (real_t)-0.4), Vector3((real_t)(0.25 * sx_l), (real_t)-0.65, (real_t)0.75) };
+		const Quaternion t_inv = t_rot.inverse();
+		for (int i = 0; i < 2; i++) {
+			const Vector3 pref = t_rot.xform(eng_normalized(prefs[i]));
+			Vector3 perp = pref - line * (real_t)pref.dot(line);
+			if ((double)perp.length_squared() < 1e-4) {
+				perp = t_rot.xform(Vector3((real_t)sx_l, 0, 0));
+			}
+			perp = eng_normalized(perp);
+			elbow_dir_l = ad_elbow_dir(left, t_inv.xform(line * (real_t)cos_a + perp * (real_t)sin_a), lu_l, t_rot, S, 0.28);
+			elbow_l = sh_l + elbow_dir_l * (real_t)lu_l;
+			const Vector3 in_chest = t_inv.xform(elbow_l - t_pos);
+			if (!(std::fabs((double)in_chest.x) < (double)torso_half.x + 0.06 * S && std::fabs((double)in_chest.y) < (double)torso_half.y + 0.02 * S && (double)in_chest.z < (double)torso_half.z + 0.06 * S)) {
+				break;
+			}
+		}
+		// Driven as hard as the main arm's, firm while the hands move slowly or hold, giving way in a fast stroke.
+		const double spd_l = (double)(ad_velocity_at(fore, hand_l) - torso->get_linear_velocity()).length() / S;
+		const double calm = ad_clampf(1.3 - spd_l / 3.0, 0.3, 1.0);
+		const double straight = ad_clampf(1.0 - sin_a / 0.4, 0.0, 1.0);
+		{
+			const double max_t = 120.0 * calm * af * MS * S;
+			if (max_t > 0.0) {
+				pd_axis(upper, down, eng_normalized(elbow_dir_l + Vector3(0, (real_t)-0.3, 0) * (real_t)straight), 12.0, 0.9, max_t, dt, 1.0, Vector3());
+			}
+		}
+		const Vector3 fore_dir_l = eng_normalized(hand_l - elbow_l);
+		{
+			const double max_t = 50.0 * calm * af * MS * S;
+			if (max_t > 0.0) {
+				pd_axis(fore, down, fore_dir_l, 10.0, 0.8, max_t, dt, 1.0, Vector3());
+			}
+		}
+		ad_twist_to(upper, fore_dir_l, 14.0 * MS, 1.4 * MS, 90.0 * calm * MS, dt);
+	}
+	// It bears its own weight and its half of the weapon's.
+	const double m_arm = fo_nominal + up_nominal * 0.5;
+	const double m_bear = m_arm + (w_two_there && front_given ? w_two_mass * 0.5 : 0.0);
+	const Vector3 fore_pos = fore->get_global_position();
+	fore->apply_impulse(Vector3(0, (real_t)(m_bear * gravity * gd_minf(1.0, af * 1.2) * dt), 0), hand_l - fore_pos);
+	if (!on_ground) {
+		torso->apply_central_impulse(Vector3(0, (real_t)(-m_bear * gravity * gd_minf(1.0, af * 1.2) * dt), 0));
+	}
+	// The off hand works too: it carries its end of the haft to where the swing wants it.
+	if (front_given && w_two_there) {
+		const Vector3 vel_l = ad_velocity_at(fore, hand_l) - torso->get_linear_velocity();
+		const double m_l = m_arm + w_two_mass * 0.5;
+		const double wn_l = 22.0;
+		const Vector3 J_l = clamp_len(((two_front - hand_l) * (real_t)wn_l * (real_t)wn_l - vel_l * (real_t)2.0 * (real_t)0.9 * (real_t)wn_l) * (real_t)m_l * (real_t)dt, 700.0 * af * stam_f * blood_f * MS * dt);
+		fore->apply_impulse(J_l, hand_l - fore->get_global_position());
+		torso->apply_central_impulse(-J_l * (real_t)(on_ground ? 0.5 : 1.0));
+	}
+}
+
 // Which arguments the arms' and the legs' calls take (the script asks before it uses them: a library left over from an older build would be called
 // with the wrong ones).
 int VoxelCore::drive_api() const {

@@ -5936,6 +5936,7 @@ var _arm_refs: Array = []
 var _arm_kept := false   # the arm just driven was kept out of his body as well, in the same call of the core (control asks before it does that itself)
 var _arm_f := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_free and arm_armed (_arm_fill; a blade's own 46 to 59)
 var _arm_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_plain, arm_elbow and arm_blade, in the order they read them
+var _off_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_off_two
 ## The step's scalars for VoxelCore.arm_free and arm_armed, in the order they read them (extension/src/arm_drive.cpp), and the fields they keep.
 func _arm_fill(side: String, inp: Dictionary, w: Weapon, upper: VoxelPart, fore: VoxelPart, af: float, af_now: float, power: bool, stam_f: float, blood_f: float, dt: float, on_f: bool, rec_f: Array, b_f: Array, keep_dt: float) -> void:
 	if _arm_refs.is_empty():
@@ -6111,6 +6112,28 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	if pinned_arm == side and is_instance_valid(grabbed_by):
 		af *= 0.12
 	if side == two_off() and two_handed and not (off_goal != null and is_bow(weapons[two_side])):
+		# (The hand on the haft below the guard hand, in one call of the C++ core, to the bit what follows here: VoxelCore.arm_off_two, docs/PERF_RESEARCH.md section 29.)
+		var nc_off := Greedy.nc
+		if nc_off != null and Greedy.arm_drive_ok and Greedy.two_ok:
+			var w_o: Weapon = weapons[two_side]
+			_off_k[0] = S
+			_off_k[1] = MS
+			_off_k[2] = af
+			_off_k[3] = dt
+			_off_k[4] = gravity
+			_off_k[5] = 1.0 if on_ground else 0.0
+			_off_k[6] = stam_f
+			_off_k[7] = blood_f
+			_off_k[8] = 1.0 if side == "L" else 0.0
+			_off_k[9] = UPPER_LEN * S
+			_off_k[10] = FORE_LEN * S
+			_off_k[11] = upper.nominal_mass
+			_off_k[12] = fore.nominal_mass
+			_off_k[13] = 1.0 if two_front != null else 0.0
+			_off_k[14] = w_o.mass if w_o else 0.0
+			_off_k[15] = 1.0 if w_o else 0.0
+			nc_off.arm_off_two(upper, fore, torso, hand_point, (two_front as Vector3) if two_front != null else Vector3.ZERO, t_pos, t_rot, shoulder[side], torso.half_ext, _off_k)
+			return
 		var hand_l := hand_world(side)
 		var sh_l = t_pos + t_rot * shoulder[side]
 		var sx_l := 1.0 if side == "L" else -1.0   # (its own side: the left +x)

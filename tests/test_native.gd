@@ -453,13 +453,15 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	var homes := 0
 	var blades := 0
 	var downs := 0
+	var two_offs := 0   # (the hand on a haft below the guard hand, VoxelCore.arm_off_two's: steps of it)
 	var plain := 0
 	var sets := 0
 	var stills := 0
 	var kept := 0
 	var reaches := {}
 	for lo in [{"main": "gladius", "off": "scutum", "armor": ["helmet", "lorica", "manica", "greaves"]}, {"main": "gladius", "off": ""}, {"main": "mace", "off": "scutum"},
-			{"main": "spear", "off": ""}, {"main": "dagger", "off": "scutum"}, {"main": "bow", "off": ""}, {"main": "spear", "off": "scutum"}]:
+			{"main": "spear", "off": ""}, {"main": "dagger", "off": "scutum"}, {"main": "bow", "off": ""}, {"main": "spear", "off": "scutum"},
+			{"main": "zweihander", "off": ""}, {"main": "warhammer", "off": ""}, {"main": "longsword", "off": "", "armor": ["helmet", "lorica", "manica", "greaves"]}, {"main": "trident", "off": ""}]:
 		var m := Match.new()
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": lo})
@@ -640,16 +642,19 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				driven += 1
 			if side == f.two_side:
 				blades += 1
+			elif f.two_handed and f.weapons[f.two_side] != null:
+				two_offs += 1
 			if float((res[1][1]["fist_home"] as Dictionary)[side]) > 0.0:
 				homes += 1
 			_arm_set_speeds(bodies, speeds.map(func(_v): return Vector3.ZERO))
 		m.queue_free()
 		await get_tree().physics_frame
 	t.check(bad.is_empty(), "the core's arm drive leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), ", ".join(PackedStringArray(bad.slice(0, 6)))])
-	t.check(driven > 3500 and homes > 120 and blades == 2100 and downs > 100, "and it was the drive at work: %d of 4200 steps pushed a body, %d with a fist on its way home, %d a blade's arm, %d of a man down" % [driven, homes, blades, downs])
-	t.check(plain > 1100 and plain < 1800 and sets > 300 and reaches.size() >= 4, "the blade's steps the core takes as plain ones and those it hands back to the script both: %d of 1800 its own (the bow's none), %d steps left an elbow set, blades of %s m" % [plain, sets, reaches.keys()])
+	t.check(driven > 5500 and homes > 120 and blades == 3300 and downs > 100, "and it was the drive at work: %d of 6600 steps pushed a body, %d with a fist on its way home, %d a blade's arm, %d of a man down" % [driven, homes, blades, downs])
+	t.check(two_offs > 1000, "the hand on a haft below the guard hand among them (two-handers' own): %d of 6600 steps" % two_offs)
+	t.check(plain > 1100 and plain < 2900 and sets > 300 and reaches.size() >= 4, "the blade's steps the core takes as plain ones and those it hands back to the script both: %d of 3300 its own (the bow's none), %d steps left an elbow set, blades of %s m" % [plain, sets, reaches.keys()])
 	t.check(stills > 60, "a blade all but still among them: %d steps turned its line between 0.0007 and 0.004 of a radian" % stills)
-	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 4200 steps" % kept)
+	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 6600 steps" % kept)
 	t.check(lines > 200 and driven_in > 40 and by_depth > 40 and laid > 80, "a thrust along the blade's line among them: %d steps with a line, %d of them past the drive, %d driven in depth by the mouse, %d with a crosshair to lay it on" % [lines, driven_in, by_depth, laid])
 
 ## The plates of an arm's armour the clip is to change, named in one call (VoxelCore.clip_plates_flip for Fighter._clip_arm_armor, docs/PERF_RESEARCH.md, section 27) are the plates the script's

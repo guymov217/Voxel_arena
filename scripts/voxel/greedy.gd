@@ -15,6 +15,7 @@ static var use_native := true:
 		nc = native if v and _checked else null
 static var arm_ok := false   # the loaded core has the arms' natives (an older build does not: the script keeps the arms out)
 static var arm_drive_ok := false   # and the arm's drive itself, as far as it has been moved there (VoxelCore.arm_plain; docs/PERF_RESEARCH.md, section 20)
+static var two_ok := false   # and the hand on a haft below the guard hand (VoxelCore.arm_off_two)
 static var leg_ok := false   # and the end of a leg's step (VoxelCore.leg_tail)
 static var plant_ok := false  # and a standing leg's whole step (VoxelCore.leg_plant)
 static var ride_ok := false   # and the height his hips ride at over the ground (VoxelCore.ground_ride)
@@ -32,6 +33,7 @@ static func core() -> Object:
 			arm_ok = native.has_method("keep_arm_out") and native.has_method("keep_hand_front") and native.has_method("keep_elbow_low") and native.has_method("clear_body") and native.has_method("elbow_off") and native.has_method("hand_off")
 			var api_ok: bool = native.has_method("drive_api") and int(native.drive_api()) == DRIVE_API
 			arm_drive_ok = arm_ok and api_ok and native.has_method("arm_plain") and native.has_method("arm_blade") and native.has_method("arm_elbow") and native.has_method("arm_free") and native.has_method("arm_armed")
+			two_ok = arm_ok and api_ok and native.has_method("arm_off_two")
 			leg_ok = arm_ok and api_ok and native.has_method("leg_tail")
 			plant_ok = leg_ok and native.has_method("leg_plant")
 			ride_ok = leg_ok and native.has_method("ground_ride")
