@@ -40,6 +40,427 @@ func test_a_thunder_pot_knocks_a_man_down() -> void:
 	t.check(b.f.last_attacker == a.f, "blamed on the thrower")
 	m.queue_free()
 
+## A thrown anvil is thirty kilos of iron at a throw's speed (user: it hardly wounded and hardly took a voxel): what it lands on is pulped over the width of the anvil itself, the bone broken, the
+## wound bled; on a head it ends the man (no cap of a quarter of the brain), on a limb it takes most of it.
+func test_an_anvil_pulps_what_it_lands_on() -> void:
+	seed(4)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -8), 0.0, {}, "Thrower", 0, _idle)
+	var men := []
+	for i in 3:
+		men.append(_man(m, Vector3(-3.0 + 3.0 * i, 0, 0), PI, {}, "Target%d" % i, 1, _idle))
+	await _steps(90)
+	var before := {}
+	for e in men:
+		for p in e.f.parts:
+			before[p] = p.alive_count
+	# A head from behind, a trunk from behind, and a forearm from the front (the shield arm that was in the way).
+	var throws := [["head", 3.0], ["torso", 3.0], ["forearmL", -3.0]]
+	for i in 3:
+		var f: Fighter = men[i].f
+		var prt: VoxelPart = f.by_name.get(throws[i][0])
+		var at: Vector3 = prt.global_position
+		m.items.throw_flat("pot_anvil", at + Vector3(0, 0.15, float(throws[i][1])), at, a.f, 7.2)
+	await _steps(240)
+	var f0: Fighter = men[0].f
+	var f1: Fighter = men[1].f
+	var f2: Fighter = men[2].f
+	var head: VoxelPart = f0.head
+	t.check(not f0.alive, "an anvil on the head ends the man")
+	t.check(head.alive_count < int(before[head]) / 4, "and little of the head is left (%d of %d voxels)" % [head.alive_count, int(before[head])])
+	var trunk: VoxelPart = f1.torso
+	t.check(int(before[trunk]) - trunk.alive_count > 900, "an anvil on the trunk pulps a great hole in it (%d voxels gone)" % (int(before[trunk]) - trunk.alive_count))
+	var lost := 0
+	for p in f2.parts:
+		lost += int(before[p]) - p.alive_count
+	t.check(lost > 300, "and a limb it lands on is crushed (%d voxels gone from him)" % lost)
+	t.check(f2.blood < 100.0 or f1.blood < 50.0, "the wounds bleed")
+	m.queue_free()
+
+## The discus (user: it did not look good and did not work well): a round plate, not a square tile; spun flat; it strikes the part it meets for what its speed makes of it and glances off
+## on (a ricochet), skips on the sand and lies there a while, where a hit used to burst it on the spot and wound whoever stood near. The boomerang is gone, and a saved bag that holds one
+## loses it quietly.
+func test_a_discus_is_a_round_plate_that_strikes_glances_off_and_skips() -> void:
+	seed(6)
+	var g := Items.visual("pot_discus")
+	t.check(g.get_child_count() == 2 and g.get_children().all(func(n): return n is MeshInstance3D and (n as MeshInstance3D).mesh is CylinderMesh), "it is two round plates, the discus and its boss")
+	g.free()
+	t.check(not Items.TYPES.has("boomerang") and not (Data.shop.throwables as Dictionary).has("boomerang"), "there is no boomerang")
+	t.eq(Throwables.bag_clamp({"boomerang": 3, "anvil": 1}), {"anvil": 1}, "a bag with one in it is kept without")
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -6), 0.0, {}, "Thrower", 0, _idle)
+	var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, _idle)
+	var c := _man(m, Vector3(3.0, 0, 0), PI, {}, "Bystander", 1, _idle)
+	await _steps(60)
+	var hits := []
+	m.combat.hit.connect(func(h): hits.append(h))
+	var at: Vector3 = b.f.torso.global_position
+	var it: Dictionary = m.items.throw_flat("pot_discus", at + Vector3(0, 0.05, -5.0), at, a.f, 18.0)
+	t.check(absf((it.spin as Vector3).x) < 0.001 and absf((it.spin as Vector3).z) < 0.001 and absf((it.spin as Vector3).y) > 10.0, "it spins flat, about its own axis")
+	await _steps(60)
+	t.check(hits.any(func(h): return h.char == b.f and float(h.J) > 8.0), "it struck the man it met (%s)" % str(hits.map(func(h): return [h.char.display_name, snappedf(float(h.J), 0.1)])))
+	t.check(not hits.any(func(h): return h.char == c.f), "and not the one standing by")
+	t.check(m.items.list.has(it) and bool(it.get("bounced", false)), "it was not spent on him: it glanced off (a ricochet)")
+	t.check(float((it.get("struck", {}) as Dictionary).size()) == 1, "and it will not strike the same man twice in the flight")
+	# It glances off, falls and skips on the sand (a plate, light: it takes a few hops to lie still).
+	var skipped := false
+	var vy_before := 0.0
+	for i in 120 * 8:
+		await get_tree().physics_frame
+		if not m.items.list.has(it) or it.grounded:
+			break
+		if float(it.vel.y) > vy_before + 1.0 and float(it.p.y) < 0.4:
+			skipped = true
+		vy_before = float(it.vel.y)
+	t.check(skipped, "it skipped on the sand (a hop, not a burst)")
+	t.check(m.items.list.has(it) and it.grounded, "and lies there (%s)" % str(it.p))
+	await _steps(120 * 6)
+	t.check(not m.items.list.has(it), "and is gone after a few seconds")
+	m.queue_free()
+
+## The net (user: the thrown net looked bad, a lattice of thin boxes thrown like a pot; it must work in physics as a net does, and be thrown as one): a mesh of ropes with no stiffness, only a
+## length they cannot be drawn past, gathered up in the hand, flung open by the throw, held back by the air at its middle while its weighted rim leads, so that it comes down a bowl.
+func _fly(net: NetSim, secs: float, chars := []) -> void:
+	for i in int(secs * 120.0):
+		net.advance(1.0 / 120.0, chars)
+
+func _stretch(net: NetSim) -> float:
+	var worst := 0.0
+	for e in net.EA.size():
+		worst = maxf(worst, (net.P[net.EA[e]] - net.P[net.EB[e]]).length() / net.cell)
+	return worst
+
+func test_a_net_is_a_mesh_of_ropes_flung_open_and_held_back_by_the_air() -> void:
+	var g := Items.visual("net")
+	t.check(g.get_child_count() >= 8 and g.get_children().all(func(n): return n is MeshInstance3D and ((n as MeshInstance3D).mesh as BoxMesh).size.x < 0.4), "in the hand it is a gathered heap of rope and lead, not a lattice laid out flat")
+	g.free()
+	var net := NetSim.make(1.0, 4)
+	var rim := 0
+	for k in net.n:
+		rim += net.RIM[k]
+	t.check(net.n == 57 and net.EA.size() == 96 and rim >= 20, "knitted of 57 knots and 96 ropes, the rim weighted (%d, %d, %d)" % [net.n, net.EA.size(), rim])
+	net.launch(Vector3(0, 1.5, 0), Vector3(0, 3.0, 9.0), Vector3(0, 0.9, 0.3), 1.0)
+	t.check(net.reach < 0.3, "it leaves the hand gathered up (%.2f m across)" % net.reach)
+	_fly(net, 0.1)
+	t.check(net.reach > 0.3 and net.reach < 0.75, "the throw flings it open: half way in a tenth of a second (%.2f m)" % net.reach)
+	_fly(net, 0.45)
+	t.check(net.reach > 0.9, "and it is open in half a second (%.2f m of its 1)" % net.reach)
+	t.check(_stretch(net) < 1.2, "its ropes are never drawn far past their length (%.2f)" % _stretch(net))
+	_fly(net, 0.4)
+	var mid := 0
+	var rim_y := 0.0
+	for k in net.n:
+		if net.UV[k] == Vector2(4, 4):
+			mid = k
+		if net.RIM[k] == 1:
+			rim_y += net.P[k].y / float(rim)
+	t.check(net.P[mid].y > rim_y + 0.1, "the air holds its middle back while the weighted rim leads: it falls a bowl (middle %.2f m, rim %.2f m)" % [net.P[mid].y, rim_y])
+	_fly(net, 5.0)
+	t.check(net.low < 0.05 and net.rest_t > 1.0 and _stretch(net) < 1.2, "it comes down on the sand, lies there in a heap and is still (%.2f m, %.1f s)" % [net.low, net.rest_t])
+
+func test_a_thrown_net_comes_down_over_a_man_and_holds_him() -> void:
+	seed(7)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -5.5), 0.0, {}, "Thrower", 0, _idle)
+	var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, _idle)
+	await _steps(60)
+	var tgt: Vector3 = b.f.torso.global_position
+	var it: Dictionary = m.items.throw_net("net", a.f.hand_world("R") + Vector3(0, 0.3, 0), tgt, a.f, 9.0)
+	var net: NetSim = it.net
+	var caught_at := -1.0
+	for i in 240:
+		await get_tree().physics_frame
+		if caught_at < 0.0 and b.f.net_timer > 0.0:
+			caught_at = net.age
+	t.check(caught_at > 0.45 and caught_at < 1.6, "it came down over him in about the time of its flight (%.2f s)" % caught_at)
+	t.check(a.f.net_timer == 0.0, "and not over the man who threw it")
+	t.check(b.f.net_timer > 1.0 and b.f.net_timer <= 3.0 and net.caught.has(b.f) and m.items.list.has(it), "he is held in it for his three seconds, and it hangs on him (%.1f s)" % b.f.net_timer)
+	var on := 0
+	for k in net.n:
+		for part in b.f.parts:
+			if Social.box_distance(part, net.P[k]) < 0.12:
+				on += 1
+				break
+	t.check(on >= 25, "most of its knots lie on him (%d of %d)" % [on, net.n])
+	# A net thrown over a man comes to lie on his head and hang from it: the middle of it is caught on his crown.
+	var on_head := 0
+	var top := 0.0
+	for k in net.n:
+		if net._pin_part[k] == b.f.head:
+			on_head += 1
+		top = maxf(top, net.P[k].y)
+	t.check(net.held_for.get(b.f, 0.0) > 0.5, "it counts the time he is held (%.1f s)" % float(net.held_for.get(b.f, 0.0)))
+	t.check(on_head >= 3 and top > b.f.head.global_position.y, "and its middle hangs on his head (%d knots caught on it, the highest %.2f m, his head at %.2f)" % [on_head, top, b.f.head.global_position.y])
+	await _steps(120 * 4)
+	t.check(b.f.net_timer == 0.0 and not net.caught.has(b.f), "he is out of it after his three seconds, and it lets him go")
+	await _steps(120 * 6)
+	t.check(not m.items.list.has(it), "and it lies on the sand a while and is gone")
+	m.queue_free()
+
+func test_a_man_who_runs_out_from_under_a_net_is_not_caught() -> void:
+	seed(7)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -7.0), 0.0, {}, "Thrower", 0, _idle)
+	var run := [false]
+	var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, func(_e): return {"main": {"x": 0.1, "y": 0.1}, "mx": 1.0 if run[0] else 0.0, "sprint": run[0]})
+	await _steps(60)
+	var tgt: Vector3 = b.f.torso.global_position
+	var it: Dictionary = m.items.throw_net("net", a.f.hand_world("R") + Vector3(0, 0.3, 0), tgt, a.f, 9.0)
+	run[0] = true
+	await _steps(300)
+	t.check(b.f.net_timer == 0.0 and absf(b.f.torso.global_position.x) > 1.5, "a man who runs from under it is not held (he is %.1f m to the side)" % absf(b.f.torso.global_position.x))
+	t.check(m.items.list.has(it) and (it.net as NetSim).caught.is_empty() and (it.net as NetSim).low < 0.1, "and it comes down on the sand empty")
+	m.queue_free()
+
+## The parts of `men` as boxes: [their inverse transform, their half extents], to ask how deep a point is in any of them.
+func _boxes_of(men: Array, thrower, age: float) -> Array:
+	var out := []
+	for f in men:
+		if f == thrower and age < 0.4:
+			continue
+		for part in f.parts:
+			if not part.severed:
+				out.append([part.global_transform.affine_inverse(), part.half_ext])
+	return out
+
+## How deep a point is in any of the boxes (a part's own box, not the net's padded one): the deepest, 0 when it is in none.
+func _depth_in(p: Vector3, boxes: Array) -> float:
+	var worst := 0.0
+	for bx in boxes:
+		var l: Vector3 = (bx[0] as Transform3D) * p
+		var he: Vector3 = bx[1]
+		var d := minf(he.x - absf(l.x), minf(he.y - absf(l.y), he.z - absf(l.z)))
+		if d > worst:
+			worst = d
+	return worst
+
+## The deepest any knot of the net, or the middle of a rope of it, is in any body of `men` (the one who threw it left out for the first moments, while it is at his hand).
+func _clip(net: NetSim, men: Array, thrower) -> Vector2:
+	var boxes := _boxes_of(men, thrower, net.age)
+	var knots := 0.0
+	var ropes := 0.0
+	for k in net.n:
+		knots = maxf(knots, _depth_in(net.P[k], boxes))
+	for e in net.EA.size():
+		if e % 2 == 0:
+			ropes = maxf(ropes, _depth_in((net.P[net.EA[e]] + net.P[net.EB[e]]) * 0.5, boxes))
+	return Vector2(knots, ropes)
+
+## The net as it is drawn, found as the shader finds it (off the texture of the knots' places and the boxes it is given): along every thread of every square (its ropes, and the two threads
+## drawn between them), at a sixth of its length, where the thread is drawn: a rope is put out of the boxes (the way of least depth), a thread between the ropes is not drawn where
+## it lies in one. Against the bodies' own boxes as they are now: [the deepest a point of it is in a body, the deepest the middle of a stretch between two points drawn is].
+func _drawn_clip(net: NetSim, men: Array, thrower) -> Vector2:
+	var gf := net.grid_bytes().to_float32_array()
+	var bf := net.box_bytes().to_float32_array()
+	var side := net.grid_side()
+	var boxes := []
+	for j in net.box_count:
+		var i := j * 16
+		var inv := Transform3D(Basis(Vector3(bf[i], bf[i + 1], bf[i + 2]), Vector3(bf[i + 4], bf[i + 5], bf[i + 6]), Vector3(bf[i + 8], bf[i + 9], bf[i + 10])), Vector3(bf[i + 3], bf[i + 7], bf[i + 11]))
+		boxes.append([inv, Vector3(bf[i + 12], bf[i + 13], bf[i + 14])])
+	var real := _boxes_of(men, thrower, net.age)
+	var knot := func(gx: int, gy: int) -> Vector3:
+		var i: int = (gy * side + gx) * 4
+		return Vector3(gf[i], gf[i + 1], gf[i + 2])
+	var inside := func(p: Vector3) -> bool:
+		for bx in boxes:
+			var l: Vector3 = (bx[0] as Transform3D) * p
+			var he: Vector3 = bx[1]
+			if absf(l.x) < he.x and absf(l.y) < he.y and absf(l.z) < he.z:
+				return true
+		return false
+	var push := func(p: Vector3) -> Vector3:
+		for bx in boxes:
+			var inv: Transform3D = bx[0]
+			var he: Vector3 = bx[1]
+			var l: Vector3 = inv * p
+			var e := Vector3(he.x - absf(l.x), he.y - absf(l.y), he.z - absf(l.z))
+			if e.x > 0.0 and e.y > 0.0 and e.z > 0.0:
+				if e.x <= e.y and e.x <= e.z:
+					l.x = (1.0 if l.x >= 0.0 else -1.0) * he.x
+				elif e.y <= e.z:
+					l.y = (1.0 if l.y >= 0.0 else -1.0) * he.y
+				else:
+					l.z = (1.0 if l.z >= 0.0 else -1.0) * he.z
+				p = inv.affine_inverse() * l
+		return p
+	var pts := 0.0
+	var mids := 0.0
+	for q in net._quads:
+		var gx: int = q[0]
+		var gy: int = q[1]
+		var k00: Vector3 = knot.call(gx, gy)
+		var k10: Vector3 = knot.call(gx + 1, gy)
+		var k01: Vector3 = knot.call(gx, gy + 1)
+		var k11: Vector3 = knot.call(gx + 1, gy + 1)
+		for line in 8:
+			var fixed_at: float = [0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0][line % 4]
+			var is_rope: bool = line % 4 == 0 or line % 4 == 3
+			var prev = null
+			for si in 7:
+				var f := float(si) / 6.0
+				var u: float = fixed_at if line < 4 else f
+				var v: float = f if line < 4 else fixed_at
+				var p0: Vector3 = k00.lerp(k10, u).lerp(k01.lerp(k11, u), v)
+				var p
+				if is_rope:
+					p = push.call(p0)
+				elif inside.call(p0):
+					prev = null
+					continue
+				else:
+					p = p0
+				pts = maxf(pts, _depth_in(p, real))
+				if prev != null:
+					mids = maxf(mids, _depth_in(((prev as Vector3) + (p as Vector3)) * 0.5, real))
+				prev = p
+	return Vector2(pts, mids)
+
+## (user: the net must look caught on the man and never pass through him, in any situation.) A net thrown at a man standing, running at the thrower, lying, three standing close, and
+## at a stride off: not a knot of it and not the middle of a rope of it is ever in a man's body, at any step of the throw and the fall and the holding; and it ends on him, or on the sand.
+func test_a_net_never_goes_through_a_man() -> void:
+	seed(9)
+	var worst := Vector2.ZERO
+	var worst_drawn := Vector2.ZERO
+	var scenes := ["standing", "running at him", "lying", "three together", "point blank", "running across"]
+	for scene in scenes:
+		var m := _match()
+		var a := _man(m, Vector3(0, 0, -5.0), 0.0, {}, "Thrower", 0, _idle)
+		var mv := [0.0, 0.0]
+		var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, func(_e): return {"main": {"x": 0.1, "y": 0.1}, "mx": mv[0], "mz": mv[1], "sprint": mv[0] != 0.0 or mv[1] != 0.0})
+		var men := [a.f, b.f]
+		var kind := "net"
+		var aim: Vector3
+		await _steps(60)
+		match scene:
+			"running at him":
+				mv[1] = 1.0   # (forward: he faces the thrower)
+			"lying":
+				b.f.die("test")
+				await _steps(90)
+			"three together":
+				var c := _man(m, Vector3(0.7, 0, 0.3), PI, {}, "Second", 1, _idle)
+				var d := _man(m, Vector3(-0.7, 0, -0.2), PI, {}, "Third", 1, _idle)
+				men.append(c.f)
+				men.append(d.f)
+				kind = "pot_bignet"
+				await _steps(40)
+			"point blank":
+				a.f.teleport(Vector3(0, 0, -1.9))
+				await _steps(40)
+			"running across":
+				mv[0] = 1.0
+		aim = b.f.torso.global_position
+		var it: Dictionary = m.items.throw_net(kind, a.f.hand_world("R") + Vector3(0, 0.3, 0), aim, a.f, 9.0)
+		var net: NetSim = it.net
+		var deepest := Vector2.ZERO
+		var drawn := Vector2.ZERO
+		for i in 360:
+			await get_tree().physics_frame
+			if not m.items.list.has(it):
+				break
+			if i % 3 == 0:
+				var cl := _clip(net, men, a.f)
+				deepest = Vector2(maxf(deepest.x, cl.x), maxf(deepest.y, cl.y))
+				var dr := _drawn_clip(net, men, a.f)
+				drawn = Vector2(maxf(drawn.x, dr.x), maxf(drawn.y, dr.y))
+		t.check(deepest.x < 0.010, "%s: not a knot of it is in a body (%.1f mm at the worst)" % [scene, deepest.x * 1000.0])
+		t.check(deepest.y < 0.025, "%s: nor the middle of a rope (%.1f mm at the worst)" % [scene, deepest.y * 1000.0])
+		t.check(drawn.x < 0.006, "%s: nor a thread of it as it is drawn (%.1f mm at the worst)" % [scene, drawn.x * 1000.0])
+		t.check(drawn.y < 0.015, "%s: nor a stretch of thread between two of them (%.1f mm at the worst)" % [scene, drawn.y * 1000.0])
+		worst = Vector2(maxf(worst.x, deepest.x), maxf(worst.y, deepest.y))
+		worst_drawn = Vector2(maxf(worst_drawn.x, drawn.x), maxf(worst_drawn.y, drawn.y))
+		m.queue_free()
+	t.check(worst.x < 0.010 and worst.y < 0.025 and worst_drawn.x < 0.006 and worst_drawn.y < 0.015, "in every throw (%.1f and %.1f mm; drawn %.1f and %.1f mm)" % [worst.x * 1000.0, worst.y * 1000.0, worst_drawn.x * 1000.0, worst_drawn.y * 1000.0])
+
+## A net that holds a man hangs on him (its knots that lie on him catch there) and goes where he goes; when he is out of it, it lets go.
+func test_a_net_that_holds_a_man_hangs_on_him_and_goes_with_him() -> void:
+	seed(7)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -5.5), 0.0, {}, "Thrower", 0, _idle)
+	var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, _idle)
+	await _steps(60)
+	var it: Dictionary = m.items.throw_net("net", a.f.hand_world("R") + Vector3(0, 0.3, 0), b.f.torso.global_position, a.f, 9.0)
+	var net: NetSim = it.net
+	await _steps(200)
+	t.check(net.caught.has(b.f) and net.pinned >= net.n / 4, "it has caught on him: %d of its %d knots ride on his body" % [net.pinned, net.n])
+	# He is carried off at two metres a second (a shove, a friend dragging him): what hangs on him goes too, and nothing of it is in him on the way.
+	var x0: Vector3 = b.f.torso.global_position
+	var deepest := 0.0
+	for i in 90:
+		for part in b.f.parts:
+			part.linear_velocity = Vector3(2.0, part.linear_velocity.y, 0.0)
+		await get_tree().physics_frame
+		var bx := _boxes_of([b.f], null, 9.0)
+		for k in net.n:
+			deepest = maxf(deepest, _depth_in(net.P[k], bx))
+	var moved := Vector2(b.f.torso.global_position.x - x0.x, b.f.torso.global_position.z - x0.z).length()
+	var off := Vector2(net.center.x - b.f.torso.global_position.x, net.center.z - b.f.torso.global_position.z).length()
+	t.check(moved > 0.8 and off < 0.7 and net.pinned >= net.n / 6, "and goes where he goes (he went %.1f m, it is %.2f m from him, %d knots on him)" % [moved, off, net.pinned])
+	t.check(deepest < 0.012, "never in him on the way (%.1f mm)" % [deepest * 1000.0])
+	await _steps(120 * 3)
+	t.check(b.f.net_timer == 0.0 and net.pinned == 0 and not net.caught.has(b.f), "when his time is out it lets go of him: nothing of it is caught on him")
+	m.queue_free()
+
+## A guest is not told when the man is out of the net he sees fall over him: it lets him go when the time of such a net is out (Throwables.NET_HOLD), as the host does by the man's own clock.
+func test_a_guest_lets_a_man_out_of_the_net_he_sees_fall_over_him_when_its_time_is_out() -> void:
+	seed(7)
+	var m := _match()
+	var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, _idle)
+	await _steps(60)
+	var its := Items.new()
+	its.headless = true
+	add_child(its)
+	var it: Dictionary = its.throw_net("net", Vector3(0, 1.8, -3.5), b.f.torso.global_position, null, 9.0)
+	var net: NetSim = it.net
+	var caught_at := -1.0
+	var out_at := -1.0
+	for i in 120 * 7:
+		await get_tree().physics_frame
+		its.update_guest_nets(1.0 / 120.0, [b.f])
+		if caught_at < 0.0 and net.caught.has(b.f):
+			caught_at = net.age
+		if caught_at > 0.0 and out_at < 0.0 and not net.caught.has(b.f):
+			out_at = net.age
+	t.check(caught_at > 0.0, "the net a guest sees come down over a man holds him (at %.2f s)" % caught_at)
+	t.check(out_at > caught_at + 2.8 and out_at < caught_at + 3.5 and net.pinned == 0, "and lets him go when its three seconds are out (%.2f s on)" % (out_at - caught_at))
+	m.queue_free()
+	its.queue_free()
+
+func test_a_net_man_nets_the_man_who_stands_before_him() -> void:
+	seed(8)
+	var m := _match()
+	var a := _man(m, Vector3(0, 0, -4.5), 0.0, {}, "Retiarius", 0, _idle)
+	var b := _man(m, Vector3(0, 0, 0), PI, {}, "Target", 1, _idle)
+	var c := _man(m, Vector3(1.6, 0, -1.2), PI, {}, "Bystander", 0, _idle)
+	await _steps(60)
+	m.use_ability(a.f, {"type": "net", "target": b.f})
+	await _steps(240)
+	t.check(b.f.net_timer > 0.0, "the net he threw is on the man he threw it at")
+	t.check(a.f.net_timer == 0.0, "and not on him")
+	m.queue_free()
+
+func test_a_guest_draws_the_net_in_the_air_from_the_hosts_word_of_where_it_is() -> void:
+	var items := Items.new()
+	items.headless = true
+	add_child(items)
+	items.apply_snapshot([[7, "net", 0.0, 1.8, -3.0, 0.0, 1.0, 8.0]])
+	var it: Dictionary = items.list[0] if items.list.size() == 1 else {}
+	t.check(not it.is_empty() and it.has("net"), "a net the host has in the air is a net here, falling by its own ropes")
+	if it.is_empty():
+		items.queue_free()
+		return
+	var net: NetSim = it.net
+	var z0 := net.center.z
+	for i in 60:
+		items.update_guest_nets(1.0 / 120.0, [])
+	t.check(net.center.z > z0 + 1.0 and items.has_nets(), "it flies on between the host's words (%.1f m on)" % (net.center.z - z0))
+	items.apply_snapshot([[7, "net", 0.0, 1.0, 3.0, 0.0, 0.0, 0.0]])
+	t.check(absf(net.center.z - 3.0) < absf(z0 + 1.0 + 1.0 - 3.0), "and the host's next word draws it back toward where it is (%.1f m from there)" % absf(net.center.z - 3.0))
+	items.apply_snapshot([])
+	t.check(items.list.is_empty(), "and when the host has none in the air it is gone")
+	items.queue_free()
+
 func test_an_archer_draws_looses_and_the_arrow_sticks() -> void:
 	seed(3)
 	var m := _match()

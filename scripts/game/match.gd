@@ -1504,6 +1504,12 @@ func _physics_process(dt: float) -> void:
 	if role == "guest":
 		_update_streams(dt)
 		throwables.update(dt)
+		if not headless and items.has_nets():
+			var seen := []
+			for x in entities:
+				if is_instance_valid(x.f):
+					seen.append(x.f)
+			items.update_guest_nets(dt, seen)
 		for e in entities:
 			if is_instance_valid(e.f) and _any_spots(e.f):
 				Fire.tick(e.f, dt, false)
@@ -1572,7 +1578,7 @@ func _physics_process(dt: float) -> void:
 			"bot" when not f.alive:
 				pass   # the dead think no more (whatever a bot chose, his body takes no orders now)
 			"bot":
-				var tgt = nearest_enemy(e)
+				var tgt = nearest_enemy(e, true)
 				var mt = e.get("manual_target")
 				if mt != null and mt.f.alive and mt.team != e.team:
 					tgt = mt
@@ -1589,7 +1595,7 @@ func _physics_process(dt: float) -> void:
 					f.set_meta("rage_gap", rng.randf_range(2.2, 4.2))
 					say(f, "scream", 1.4, "rampage")
 			"beast":
-				var tb = nearest_enemy(e)
+				var tb = nearest_enemy(e, true)
 				f.target = tb.f if tb else null
 				if e.get("training", "fights") != "fights":
 					f.target = null   # a beast told not to fight stands its ground
@@ -2175,7 +2181,10 @@ func use_ability(c, ab: Dictionary) -> void:
 			aim = Vector3(t.torso.global_position.x + randf_range(-0.4, 0.4), 0.1, t.torso.global_position.z + randf_range(-0.4, 0.4))
 		else:
 			aim = t.head.global_position + Vector3(0, -0.15, 0)
-		items.throw_at(type, from, aim, c, 9.0 if type == "net" else (10.0 if type.begins_with("pot_") else 13.0))
+		if type == "net":
+			items.throw_net(type, from, aim, c, 9.0)
+		else:
+			items.throw_at(type, from, aim, c, 10.0 if type.begins_with("pot_") else 13.0)
 		sfx("whoosh", from)
 	elif type == "heal" and t.alive:
 		t.blood = minf(100.0, t.blood + 25.0)
@@ -2660,7 +2669,7 @@ func _roster_of(team, beast: bool) -> Array:
 		tab[team] = got
 	return got
 
-func nearest_enemy(e: Dictionary):
+func nearest_enemy(e: Dictionary, blind := false):
 	var best = null
 	var bd := INF
 	var p: Vector3 = e.f.torso.global_position
@@ -2683,6 +2692,9 @@ func nearest_enemy(e: Dictionary):
 		for o in cands:
 			if o.get("harmless", false) and o.f.torso.global_position.distance_to(p) < 12.0:
 				return o
+	# A bot (or a beast) cannot pick out a man through smoke: it has lost him (a smoke pot's cloud: Throwables.smoke_blocks).
+	if blind and throwables != null and throwables.has_smoke():
+		cands = cands.filter(func(o): return not throwables.smoke_blocks(p, o.f.torso.global_position))
 	var st = social.target_for(e, cands) if social else null
 	if st is Dictionary and st.has("only"):
 		cands = st.only

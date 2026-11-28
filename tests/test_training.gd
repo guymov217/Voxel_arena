@@ -140,7 +140,8 @@ func test_a_stronger_arm_throws_faster_and_harder() -> void:
 			m.items.remove(it)
 		blows.clear()
 		m.throwables.explode("pot_dart", v.torso.global_position, me, Vector3(0, 0, 1), v, v.torso)
-		m.throwables.explode("pot_discus", v.torso.global_position + Vector3(0, -0.2, 0), me, Vector3(0, 0, 1), v, v.torso)
+		# (The discus strikes as an item does, at the speed it has: the same for both throws here, so what comes of the arm is the blow's own.)
+		m.throwables.on_item({"kind": "discus", "type": "pot_discus", "char": v, "part": v.torso, "item": {"owner": me}, "p": v.torso.global_position + Vector3(0, -0.2, 0), "dir": Vector3(0, 0, 1), "speed": 12.0, "ricochet": false})
 		runs[-1]["blows"] = blows.duplicate()
 	var a: Dictionary = runs[0]
 	var b: Dictionary = runs[1]

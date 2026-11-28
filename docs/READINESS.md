@@ -454,6 +454,20 @@ long campaign on real hardware before a release date is set.
   GDScript voxels without it, slower but whole), so run one export and look for the core in the
   log on a real PC.
 
+- The owner's round of 2026-11-28: the captions that popped up on every blow ("+N Mighty blow") are gone from the HUD, and
+  men bleeding to death no longer go white (the pallor shader and its code are gone); choosing something in Training > Items no longer
+  scrolls the list back to the top (the bag is refreshed in place, `tests/test_training_screen.gd`); the anvil pulps what it
+  lands on (a head is all but gone, a trunk loses some nine hundred voxels, `tests/test_items.gd`); the boomerang is gone (a
+  saved bag loses it quietly) and the discus is a round plate that strikes, glances off and skips; the thrown net is a real mesh of
+  ropes (`scripts/game/net_sim.gd`: flung open in the air, held back at its middle by the air, falls a bowl over the man, its middle
+  drawn onto his head and the rest hanging on him, and holds him three seconds, four for the weighted net; it never goes through a man,
+  `tests/test_items.gd` `test_a_net_never_goes_through_a_man`: six throws, the knots, the middles of the ropes and the net as it is
+  drawn against his own boxes; costs about 1.3 ms a net step (sixty a second) in the editor build while it is out near men, a third of
+  that when it lies calm, nothing when no man is near); the
+  smoke pot, which did nothing at all (its `impaired` had no caller, the shop's "bots lose their targets" was never written), is now a
+  screen of smoke: pale billows eight seconds, nobody in it sees past arm's length, nobody outside sees in, the bots lose a man who
+  hides in it, the player's view goes soft and pale inside (`Throwables.smoke_blocks`, `HUD.SMOKE_SHADER`).
+
 ## Known rough edges
 
 
@@ -468,6 +482,9 @@ long campaign on real hardware before a release date is set.
   with random decisions); they pass on their own and fail now and then in the full run.
 - Everything above was checked headless and with a software renderer; lighting, shadows and
   frame rate must be looked at on a real GPU.
+- The Hand of Jupiter does little: measured, a man hurled by it loses about 4% of his blood and eight voxels and gets up (a hurl
+  leaves at about 10 m/s; the landing blow is capped at 52), and nothing shows the grip but a few sparks. A proposal for it is with
+  the owner (a visible hand and tethers, aim help, a stronger hurl and a slam); not changed yet.
 
 ## Not in yet (later, not needed for the demo)
 

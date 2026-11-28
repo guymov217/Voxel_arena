@@ -2362,10 +2362,10 @@ func slow(seconds: float, factor: float) -> void:
 	slow_timer = seconds
 	slow_factor = factor
 
-## Caught in a net (bola, weighted net): a quarter of the pace until it is off.
-func set_net(on: bool, seconds := 4.0) -> void:
+## Caught in a net (bola, weighted net): a quarter of the pace until it is off. A thrown net hangs on him as the net it is (Items, NetSim: `box` false); the bola's tangle is the haze of rope round him.
+func set_net(on: bool, seconds := 4.0, box := true) -> void:
 	net_timer = seconds if on else 0.0
-	if on and net_mesh == null and DisplayServer.get_name() != "headless":
+	if on and box and net_mesh == null and DisplayServer.get_name() != "headless":
 		net_mesh = MeshInstance3D.new()
 		var bm := BoxMesh.new()
 		bm.size = Vector3(12, 14, 8) * V * S
@@ -9431,12 +9431,14 @@ func apply_hit(part: VoxelPart, hit: Dictionary) -> Dictionary:
 		part.wound(lp, (minf(0.13, 0.05 + J * 0.003) if bruise else V * 1.6) * S, "bruise" if bruise else "blood")
 	if not remove.is_empty():
 		cut_force = J * hardness * sharpness * (1.0 + heavy)
-		if remove.size() > 80 * 8:
+		# (A falling anvil is let by both limits below: thirty kilos of iron pulps what it lands on, a head too: `mangle`.)
+		var mangle: bool = bool(hit.get("mangle", false))
+		if remove.size() > 80 * 8 * (3 if mangle else 1):
 			remove.sort_custom(func(a, b): return part.local_of(a).distance_squared_to(lp) < part.local_of(b).distance_squared_to(lp))
-			remove = remove.slice(0, 80 * 8)
+			remove = remove.slice(0, 80 * 8 * (3 if mangle else 1))
 		# The skull and the depth of it: no one blow takes more than a quarter of the brain, so a
 		# head is split blow after blow, not ended by one.
-		if part == head and not detached:
+		if part == head and not detached and not mangle:
 			var cap := ceili(0.25 * float(organ_total.get(Anatomy.BRAIN, 0)))
 			var brain := remove.filter(func(i): return part.organ[i] == Anatomy.BRAIN)
 			if brain.size() > cap:

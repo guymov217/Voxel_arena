@@ -7,9 +7,9 @@ extends Node3D
 
 const POTS := {"thunderPot": "pot_thunder", "nailPot": "pot_nail", "greekFire": "pot_fire", "vitriol": "pot_acid",
 	"caltrops": "pot_caltrops", "goat": "pot_goat", "bola": "pot_bola", "oliveOil": "pot_oil", "garum": "pot_garum", "honey": "pot_honey", "smoke": "pot_smoke",
-	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "bigNet": "pot_bignet"}
+	"mystery": "pot_mystery", "chickens": "pot_chickens", "anvil": "pot_anvil", "harpoon": "pot_harpoon", "discus": "pot_discus", "net": "net", "bigNet": "pot_bignet"}
 ## The things a hand holds ready that are not pots (thrown with F all the same).
-const HELD := {"darts": "pot_dart", "boomerang": "boomerang", "torch": "torch"}
+const HELD := {"darts": "pot_dart", "torch": "torch"}
 ## The special arrows (user: arrows for archers, bought one at a time and kept in the bag; its number
 ## picks one for the bow, which looses it, a stack's worth, till it runs out, and its number again
 ## puts it back): the kit id and the arrow it looses. ARROW_IDS numbers them on the wire (0: none).
@@ -22,7 +22,14 @@ const BLAST_ARROW := {"power": 12.0, "radius": 1.8}
 ## pot made one; the beehive and the fireball gone, the honey pot's bees and Greek fire in their
 ## place).
 const RENAMED := {"sandPot": "smoke", "beehive": "honey", "fireball": "greekFire"}
-const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5}
+const ANVIL_CRUSH_MAX := 0.4   # how wide a crater (its radius, of S) a falling anvil pulps at the most
+const ANVIL_BLEED := 0.1       # what its blow adds to the part's bleeding, by its force
+const NET_HOLD := {"net": 3.0, "pot_bignet": 4.0}   # seconds a man is held in the net that came down on him
+const SMOKE_R := 3.2           # m: the cloud of a smoke pot, across the sand...
+const SMOKE_T := 8.0           # ...and the seconds it stands
+const SMOKE_SIGHT := 1.8       # m: how far a man sees in it, and how near he is seen from outside
+const SMOKE_H := 2.6           # m: how high it stands
+const THROW_SPEED := {"pot_anvil": 7.2, "pot_harpoon": 19.0, "pot_discus": 18.0, "pot_bola": 15.5, "pot_bignet": 10.0, "net": 9.0}
 const NAILS := 120
 const CALTROPS := 14
 const ZONE_COLORS := {"sand": Color(0.85, 0.75, 0.54, 0.45), "fire": Color(1.0, 0.48, 0.1, 0.55), "acid": Color(0.56, 0.83, 0.23, 0.7), "caltrops": Color(0.36, 0.37, 0.4, 1.0),
@@ -127,6 +134,8 @@ func _hit(c, part: VoxelPart, J: float, type: String, point: Vector3, dir: Vecto
 		h.through = true   # (a bodkin: the channel it makes runs right through the part, Fighter.apply_hit)
 	if extra.has("pierce_armor"):
 		h.pierce_armor = true   # (and goes through the plate over it, leaving a hole: Fighter.apply_hit)
+	if extra.has("mangle"):
+		h.mangle = true   # (an anvil: no cap on how many voxels it pulps, nor on how much of a head's brain: Fighter.apply_hit)
 	if extra.has("blast"):
 		h.blast = extra.blast
 		h.blast_r = extra.blast_r
@@ -869,8 +878,13 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				bees_on(x.c, owner_, p, BEES if on_him else BEES_SPLASHED)
 				m.feed.emit(Loc.t("%s is dripping honey, and the bees have found him!") % x.c.display_name)
 		"pot_smoke":
-			# Sand and smoke (the sand pot and the smoke pot made one, user): a cloud that blinds.
-			add_zone("smoke", Vector3(p.x, 0, p.z), 3.2, 8.0, owner_)
+			# A smoke screen (the sand pot and the smoke pot made one, user; and the cloud looked horrible and nobody could tell what it did): the pot bursts in a billow of pale smoke that
+			# fills a ring of the sand for eight seconds. Nobody sees across it: whoever is in it sees to arm's length, and whoever is outside sees nothing of what is inside it (smoke_blocks:
+			# the bots lose their marks), and what it does to the one who stands in it shows on his screen (the HUD's haze). It hurts nobody.
+			add_zone("smoke", Vector3(p.x, 0, p.z), SMOKE_R, SMOKE_T, owner_)
+			if m.fx:
+				m.fx.burst("smokescreen", Vector3(p.x, 0.5, p.z), 140, Vector3.UP, 1.5)
+				m.fx.burst("dust", Vector3(p.x, 0.1, p.z), 40, Vector3.UP, 1.4)
 		"torch":
 			# A torch thrown: what it strikes catches fire; on the sand it lies burning a while,
 			# and spilled oil it falls in (or beside) goes up in flames.
@@ -935,34 +949,9 @@ func explode(type: String, p: Vector3, owner_ = null, dir = null, hit_char = nul
 				m.crowd_add(owner_, 8, "catch of the day")
 		"pot_bolt", "pot_arrow", "pot_arrow_fire", "pot_arrow_poison", "pot_arrow_ice", "pot_arrow_blast", "pot_arrow_pierce", "pot_arrow_barb", "pot_dart", "nail":
 			_dart(type, p, owner_, dir, hit_char, hit_part, power)
-		"pot_discus":
-			m.sfx("clang", p, 0.5)
-			var dv = _near(p, 1.1)
-			if dv.is_empty():
-				return
-			var c = dv[0].c
-			var part: VoxelPart = c.head if c.head.global_position.distance_to(p) < 0.35 else c.torso
-			var ddir: Vector3 = p - owner_.torso.global_position if owner_ else Vector3(0, 0, 1)
-			ddir.y = 0.0
-			_hit(c, part, 16.0 * arm_blow(owner_), "blunt", part.global_position, ddir.normalized(), owner_, {"hardness": 0.8})
-			if c == owner_:
-				m.feed.emit(Loc.t("%s got hit by their own discus") % c.display_name)
-		"pot_bignet":
-			var n := 0
-			for x in _near(p, 1.8):
-				if x.c == owner_:
-					continue
-				x.c.set_net(true, 4.0)
-				n += 1
-				if owner_:
-					x.c.last_attacker = owner_
-			m.feed.emit(Loc.t("%d caught in the big net") % n)
 		"rock":
 			if hit_char and hit_part:
 				_hit(hit_char, hit_part, 9.0 * arm_blow(owner_), "blunt", p, dir if dir != null else Vector3.DOWN, owner_, {"hardness": 0.7})
-		"net":
-			if hit_char:
-				hit_char.set_net(true, 3.0)
 
 ## The hail of a nail pot: every nail a real little iron body (user: the nail is a physical
 ## body, flying through the air), let go from all round the burst, every way, up, down and all
@@ -1225,7 +1214,7 @@ func _dart(type: String, p: Vector3, owner_, dir, hit_char, hit_part, power := 1
 		burst(p, Color(0.66, 0.91, 1.0), 12, 1.5, 0.6, 0.03)
 
 ## What an item event means: a splat (it broke, or struck someone), food eaten, a banana
-## slipped on, a cheese wheel bowling a man over, a boomerang caught.
+## slipped on, a cheese wheel bowling a man over.
 func on_item(ev: Dictionary) -> void:
 	var c = ev.get("char")
 	var it: Dictionary = ev.item
@@ -1240,9 +1229,13 @@ func on_item(ev: Dictionary) -> void:
 			m.sfx("thud", ev.p, 1.0)
 			burst(ev.p, Color(0.6, 0.5, 0.4), 14, 2.0)
 			if part and c and c.alive:
-				# It crushes what it lands on: a dent the size of the blow, flesh and bone.
-				var crush := minf(0.12, 0.03 + J * 0.0009) * sqrt(float(c.S))
-				_hit(c, part, J, "blunt", ev.p, ev.dir, owner_, {"hardness": 1.0, "crush": crush, "heavy": clampf(J / 60.0, 0.0, 1.0)})
+				burst(ev.p, Color(0.75, 0.05, 0.05), 24, 3.5)   # (the blood and the flesh it throws up)
+				# It crushes what it lands on: thirty kilos of iron, flesh and bone pulped over the width of the anvil itself (a hammer's blow
+				# was a dent a hand wide, and a man hit by an anvil lost a few dozen voxels of a limb and stood up: user), and the wound bleeds.
+				var crush := minf(ANVIL_CRUSH_MAX, 0.08 + J * 0.0036) * sqrt(float(c.S))
+				_hit(c, part, J, "blunt", ev.p, ev.dir, owner_, {"hardness": 1.0, "crush": crush, "heavy": clampf(J / 60.0, 0.0, 1.0), "mangle": true})
+				if not part.severed:
+					part.bleed += J * ANVIL_BLEED
 				var push: Vector3 = (ev.dir as Vector3) * float(ev.mass) * spd * 0.35
 				c.torso.apply_central_impulse(Vector3(push.x, maxf(0.0, push.y), push.z))
 				if c.state == "stand" and J > 25.0 and not c.mods.get("unstoppable", false):
@@ -1250,6 +1243,28 @@ func on_item(ev: Dictionary) -> void:
 				m.feed.emit(Loc.t("An anvil hits %s. Classic.") % c.display_name)
 				if owner_ and owner_ != c:
 					m.crowd_add(owner_, 10, "anvil")
+		"discus":
+			# A hard plate at speed on the part it met: a blunt blow by its speed, and a ricochet (it had struck the wall, the sand or another man before) pays the crowd.
+			m.sfx("clang", ev.p, 0.7)
+			burst(ev.p, Color(0.9, 0.85, 0.5), 6, 2.0)
+			var dpart: VoxelPart = ev.part
+			if dpart and c and c.alive:
+				var dj := clampf(5.0 + float(ev.speed) * 1.05, 8.0, 30.0) * arm_blow(owner_)
+				_hit(c, dpart, dj, "blunt", ev.p, ev.dir, owner_, {"hardness": 0.85})
+				if c == owner_:
+					m.feed.emit(Loc.t("%s got hit by their own discus") % c.display_name)
+				elif owner_ and bool(ev.get("ricochet", false)):
+					m.crowd_add(owner_, 6, "ricochet")
+		"net":
+			# A net has come down over him and holds (Items, NetSim): he is slow as a man in rope, a quarter of his pace, until he is out of it, and the net hangs on him till then.
+			if c and c.alive:
+				c.set_net(true, NET_HOLD.get(String(ev.type), 3.0), false)
+				if owner_ and owner_ != c:
+					c.last_attacker = owner_
+				m.sfx("slap", ev.p, 0.6)
+				m.feed.emit(Loc.t("%s is caught in a net") % c.display_name)
+		"bounce":
+			m.sfx("clang", ev.p, 0.4)
 		"land":
 			m.sfx("thud", ev.p, minf(1.0, float(ev.speed) / 8.0))
 			if m.fx:
@@ -1322,8 +1337,6 @@ func on_item(ev: Dictionary) -> void:
 			m.feed.emit(Loc.t("%s is bowled over by a cheese wheel") % c.display_name)
 			if owner_:
 				m.crowd_add(owner_, 6, "cheese")
-		"return":
-			m.feed.emit(Loc.t("%s caught the boomerang") % c.display_name)
 
 # ---------- Zones ----------
 
@@ -1335,13 +1348,13 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 		var cm := CylinderMesh.new()
 		cm.top_radius = r
 		cm.bottom_radius = r
-		cm.height = 1.6 if type == "smoke" else 0.02
+		cm.height = 0.02
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = ZONE_COLORS.get(type, Color.WHITE)
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if type == "fire" else BaseMaterial3D.SHADING_MODE_PER_PIXEL
 		if type == "smoke":
-			mat.albedo_color.a = 0.3
+			mat.albedo_color = Color(0.72, 0.71, 0.68, 0.22)   # (only the ring of sand it covers: the cloud is the smoke)
 		cm.material = mat
 		if type == "fire" or type == "acid" or type == "oil" or type == "honey":
 			cm.material = _zone_material(type, r)
@@ -1350,7 +1363,7 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 			cm.bottom_radius = r * 1.7
 		mi.mesh = cm
 		add_child(mi)
-		mi.global_position = Vector3(p.x, 0.8 if type == "smoke" else 0.02, p.z)
+		mi.global_position = Vector3(p.x, 0.02, p.z)
 		z.node = mi
 	zones.append(z)
 	if m.fx and (type == "fire" or type == "acid"):
@@ -1365,13 +1378,22 @@ func add_zone(type: String, p: Vector3, r: float, t: float, owner_ = null) -> Di
 		if sm:
 			sm.position = Vector3(0, 0.4, 0)
 	if m.fx and type == "smoke" and z.node:
-		# The cloud itself: voxel grains of sand turning in the air, and the haze thinner.
-		(z.node.mesh.material as StandardMaterial3D).albedo_color.a = 0.2
-		var sc: GPUParticles3D = m.fx.emitter("sandcloud", z.node, int(clampf(r * 150.0, 80.0, 500.0)), r * 0.85)
-		if sc:
-			var spm := sc.process_material as ParticleProcessMaterial
+		# The cloud itself: big soft puffs of pale smoke rolling up out of the ring, and the grains of sand it lifts turning in it.
+		var em: GPUParticles3D = m.fx.emitter("smokescreen", z.node, int(clampf(r * 34.0, 60.0, 160.0)), r * 0.8)
+		if em:
+			var spm := em.process_material as ParticleProcessMaterial
 			spm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-			spm.emission_box_extents = Vector3(r * 0.8, 0.75, r * 0.8)
+			spm.emission_box_extents = Vector3(r * 0.7, 0.6, r * 0.7)
+			em.position = Vector3(0, 0.8, 0)
+			em.visibility_aabb = AABB(Vector3(-r - 2.0, -1.0, -r - 2.0), Vector3(2.0 * r + 4.0, 6.0, 2.0 * r + 4.0))
+			em.emitting = true
+			z.em = em
+		var sc: GPUParticles3D = m.fx.emitter("sandcloud", z.node, int(clampf(r * 28.0, 40.0, 100.0)), r * 0.85)
+		if sc:
+			var spm2 := sc.process_material as ParticleProcessMaterial
+			spm2.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+			spm2.emission_box_extents = Vector3(r * 0.8, 0.75, r * 0.8)
+			sc.position = Vector3(0, 0.8, 0)
 			sc.emitting = true
 	if m.fx and type == "acid" and z.node:
 		var pz: GPUParticles3D = m.fx.emitter("poison", z.node, int(clampf(r * 30.0, 8.0, 60.0)), r * 0.8)
@@ -1404,7 +1426,7 @@ func _burn_items() -> void:
 		return
 	for it in m.items.list:
 		var n = it.get("node")
-		if n == null or not is_instance_valid(n) or n.has_meta("burning"):
+		if n == null or not is_instance_valid(n) or n.has_meta("burning") or it.has("net"):
 			continue
 		var p: Vector3 = it.p
 		if p.y > 0.5:
@@ -1413,7 +1435,7 @@ func _burn_items() -> void:
 		var acid := inside("acid", p)
 		if not fire and not acid:
 			continue
-		var metal: bool = str(it.type) in ["coin", "rock", "nail", "caltrop", "pot_anvil", "pot_discus", "boomerang"]
+		var metal: bool = str(it.type) in ["coin", "rock", "nail", "caltrop", "pot_anvil", "pot_discus"]
 		var e := BurnFx.make(n, "metal" if metal else "cloth", fire, 0.5)
 		if e:
 			n.set_meta("burning", true)
@@ -1450,6 +1472,44 @@ func inside(type: String, pos: Vector3) -> bool:
 		if z.type == type and Vector2(pos.x - z.p.x, pos.z - z.p.z).length() < z.r:
 			return true
 	return false
+
+## Whether smoke stands between two men so that they cannot see each other: nearer than arm's length (SMOKE_SIGHT) they can, whatever is round them; farther off, not if either is in a
+## cloud of smoke (whoever is in it sees only to arm's length, and from outside nobody sees into it), nor if the line between them passes through a good part of one. `a`, `b`: their trunks.
+func smoke_blocks(a: Vector3, b: Vector3) -> bool:
+	if a.distance_to(b) < SMOKE_SIGHT:
+		return false
+	for z in zones:
+		if z.type != "smoke" or float(z.t) <= 0.0:
+			continue
+		var in_a: bool = Vector2(a.x - z.p.x, a.z - z.p.z).length() < float(z.r) and a.y < SMOKE_H
+		var in_b: bool = Vector2(b.x - z.p.x, b.z - z.p.z).length() < float(z.r) and b.y < SMOKE_H
+		if in_a or in_b:
+			return true
+		var through := 0
+		for i in 9:
+			var q: Vector3 = a.lerp(b, float(i) / 8.0)
+			if Vector2(q.x - z.p.x, q.z - z.p.z).length() < z.r and q.y < SMOKE_H:
+				through += 1
+		if through >= 3:
+			return true
+	return false
+
+func has_smoke() -> bool:
+	for z in zones:
+		if z.type == "smoke":
+			return true
+	return false
+
+## How deep in smoke a point is, 0 (outside) to 1 (well inside, the cloud at its fullest): what the screen of the man standing there shows.
+func smoke_depth(p: Vector3) -> float:
+	var best := 0.0
+	for z in zones:
+		if z.type != "smoke":
+			continue
+		var d := Vector2(p.x - z.p.x, p.z - z.p.z).length()
+		var k := clampf((float(z.r) - d) / (0.45 * float(z.r)), 0.0, 1.0) * clampf(float(z.t) / 2.0, 0.0, 1.0)
+		best = maxf(best, k)
+	return best
 
 # ---------- A honey pot's bees ----------
 
@@ -2059,9 +2119,19 @@ func update(dt: float) -> void:
 						if shin:
 							var sp2: Vector3 = shin.global_position
 							_hit(c, shin, 5.0, "point", Vector3(sp2.x, 0.05, sp2.z), Vector3.UP, z.owner)
+		if z.type == "smoke" and z.has("em") and is_instance_valid(z.em):
+			# It thins in its last seconds, the puffs no longer made (what is in the air goes on rising and thinning).
+			z.em.amount_ratio = clampf(z.t / 2.5, 0.0, 1.0)
+			if z.t < 0.6:
+				z.em.emitting = false
 		if z.t <= 0.0:
 			if z.node:
-				z.node.queue_free()
+				if z.type == "smoke" and z.has("em") and is_instance_valid(z.em):
+					# (The smoke in the air is let be a few seconds more: the cloud goes as smoke does, not all at once.)
+					(z.node as MeshInstance3D).mesh = null
+					get_tree().create_timer(4.5, false).timeout.connect(z.node.queue_free)
+				else:
+					z.node.queue_free()
 			zones.erase(z)
 	# Swarms in the air fly at their man, a little wavering, and cover him when they arrive.
 	if not swarms.is_empty():
@@ -2381,8 +2451,9 @@ func throw_type(c, type: String, aim: Vector3, _dir, straight := false, power :=
 				m.items.spawn("pot_dart", from, Items.flat_shot(da - from, 19.0 * sk * throw_speed_k(1.0)).normalized() * 19.0 * sk * throw_speed_k(power), c)
 			else:
 				m.items.throw_at("pot_dart", from, da, c, 15.0 * sk)
-	elif type == "boomerang":
-		m.items.throw_at("boomerang", from, aim, c, 12.0 * sk, 0.0)
+	elif type == "pot_bignet" or type == "net":
+		# (A net is thrown to come down over what it is thrown at, not lobbed like a pot: Items.throw_net.)
+		m.items.throw_net(type, from, aim, c, float(THROW_SPEED.get(type, 9.0)) * sk)
 	elif straight:
 		# The wind-up is the throw: a quick flick tosses it a few paces (short of a far mark),
 		# held to the full it flies hard and far.

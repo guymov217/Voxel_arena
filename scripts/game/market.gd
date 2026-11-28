@@ -8,8 +8,8 @@ class_name Market
 const TABS := [
 	["fire", "Fire & blast", ["thunderPot", "nailPot", "greekFire", "vitriol", "torch"]],
 	["floor", "Floor traps", ["bananas", "caltrops", "oliveOil", "honey"]],
-	["snare", "Snares & tricks", ["smoke", "garum", "bola", "bigNet", "harpoon", "telekinesis"]],
-	["arms", "Thrown arms", ["darts", "discus", "boomerang", "anvil"]],
+	["snare", "Snares & tricks", ["smoke", "garum", "bola", "net", "bigNet", "harpoon", "telekinesis"]],
+	["arms", "Thrown arms", ["darts", "discus", "anvil"]],
 	["bow", "For archers", ["fireArrow", "poisonArrow", "frostArrow", "blastArrow", "bodkinArrow", "barbedArrow"]],
 	["crowd", "For the crowd", ["goat", "cheese", "chickens", "mystery"]],
 ]
@@ -18,7 +18,7 @@ const BASIC := ["thunderPot", "nailPot", "smoke", "bananas", "caltrops", "oliveO
 	"fireArrow", "poisonArrow", "frostArrow", "blastArrow", "bodkinArrow", "barbedArrow"]
 ## One more brought after each boss beaten, in this order (the first after the first boss); the
 ## last boss's bout ends the campaign, and from the second time round everything is there.
-const AFTER_BOSS := ["torch", "goat", "bola", "greekFire", "cheese", "honey", "discus", "garum", "harpoon", "vitriol", "boomerang", "bigNet", "anvil", "chickens", "telekinesis"]
+const AFTER_BOSS := ["torch", "goat", "bola", "greekFire", "cheese", "honey", "discus", "garum", "harpoon", "vitriol", "net", "bigNet", "anvil", "chickens", "telekinesis"]
 
 ## The trader's road: what each boss brings, in the order they come, with the bout whose boss
 ## brings it and whether it is on the table yet (`opened` brought so far); the next to come is marked.

@@ -125,6 +125,8 @@ const KINDS := {
 	"sparks": {"color": Color(1.0, 0.75, 0.35), "life": 0.35, "speed": [3.0, 8.0], "spread": 70.0, "gravity": -6.0, "size": [0.012, 0.025], "tex": "", "emit": 6.0, "add": true},
 	"dust": {"color": Color(0.78, 0.68, 0.5, 0.55), "life": 1.6, "speed": [0.4, 1.8], "spread": 80.0, "gravity": 0.3, "size": [0.25, 0.6], "tex": "soft", "drag": 1.5, "grow": 2.2},
 	"smoke": {"color": Color(0.22, 0.2, 0.19, 0.5), "life": 2.4, "speed": [0.2, 0.8], "spread": 30.0, "gravity": 0.9, "size": [0.2, 0.45], "tex": "soft", "drag": 0.8, "grow": 2.5},
+	# The smoke pot's cloud (user: it looked horrible and it was not clear what it did): big soft puffs of pale smoke that roll up out of it, thinning as they rise.
+	"smokescreen": {"color": Color(0.84, 0.83, 0.8, 0.62), "life": 4.0, "speed": [0.1, 0.5], "spread": 180.0, "gravity": 0.12, "size": [1.0, 1.8], "tex": "soft", "drag": 0.9, "grow": 1.2},
 	"fire": {"color": Color(1.0, 0.55, 0.15), "life": 0.6, "speed": [0.3, 1.2], "spread": 25.0, "gravity": 2.2, "size": [0.045, 0.085], "tex": "", "emit": 3.0, "shrink": true},
 	"brazier": {"color": Color(1.0, 0.55, 0.15), "life": 0.9, "speed": [0.6, 1.6], "spread": 18.0, "gravity": 2.5, "size": [0.07, 0.13], "tex": "", "emit": 3.2, "shrink": true},
 	"confetti": {"color": Color(1, 1, 1), "life": 2.0, "speed": [2.0, 5.0], "spread": 60.0, "gravity": -3.0, "size": [0.03, 0.05], "tex": "", "drag": 1.2, "confetti": true},
@@ -140,7 +142,7 @@ const KINDS := {
 	"embers": {"color": Color(1.0, 0.6, 0.25), "life": 4.0, "speed": [0.15, 0.5], "spread": 180.0, "gravity": 0.22, "size": [0.01, 0.02], "tex": "", "emit": 5.0, "add": true, "drag": 0.3},
 	"petals": {"color": Color(0.62, 0.05, 0.06), "life": 6.0, "speed": [0.2, 0.6], "spread": 180.0, "gravity": -0.35, "size": [0.025, 0.045], "tex": "", "drag": 1.6},
 	"sandgrain": {"color": Color(0.86, 0.74, 0.52), "life": 1.4, "speed": [0.8, 2.6], "spread": 70.0, "gravity": -5.0, "size": [0.022, 0.045], "tex": "", "drag": 0.9, "shrink": true},
-	"sandcloud": {"color": Color(0.84, 0.72, 0.5), "life": 2.6, "speed": [0.2, 0.9], "spread": 180.0, "gravity": -0.15, "size": [0.045, 0.1], "tex": "", "drag": 0.4, "swirl": true},
+	"sandcloud": {"color": Color(0.88, 0.8, 0.64), "life": 2.6, "speed": [0.2, 0.9], "spread": 180.0, "gravity": -0.15, "size": [0.03, 0.07], "tex": "", "drag": 0.4, "swirl": true},
 	"bees": {"color": Color(0.95, 0.75, 0.1), "life": 1.0, "speed": [1.2, 2.8], "spread": 180.0, "gravity": 0.0, "size": [0.055, 0.075], "tex": "", "drag": 2.5, "buzz": true},
 	"ash": {"color": Color(0.16, 0.15, 0.14), "life": 2.4, "speed": [0.3, 0.9], "spread": 40.0, "gravity": 0.7, "size": [0.015, 0.03], "tex": "", "drag": 0.8, "swirl": true},
 	"lowfire": {"color": Color(1.0, 0.55, 0.15), "life": 0.35, "speed": [0.1, 0.45], "spread": 30.0, "gravity": 1.4, "size": [0.025, 0.045], "tex": "", "emit": 3.0, "shrink": true},

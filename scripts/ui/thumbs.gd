@@ -193,7 +193,7 @@ static func item_type(id: String) -> Variant:
 		return Throwables.POTS[id]
 	if Throwables.ARROWS.has(id):
 		return Throwables.ARROWS[id]
-	return {"darts": "pot_dart", "boomerang": "boomerang", "torch": "torch", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "waterSkin": "waterskin", "bandage": "bandage", "telekinesis": "gauntlet"}.get(id)
+	return {"darts": "pot_dart", "torch": "torch", "bananas": "banana", "cheese": "cheese", "bread": "bread", "wine": "wine", "waterSkin": "waterskin", "bandage": "bandage", "telekinesis": "gauntlet"}.get(id)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS   # the pictures come in behind a paused game too

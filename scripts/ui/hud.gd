@@ -68,11 +68,12 @@ var held_label: Label
 var vignette: TextureRect
 var sight: TextureRect
 var daze_fx: ColorRect   # a head that rings sees double and blurred (DAZE_SHADER), over the view and under the rest
+var smoke_fx: ColorRect  # the view from inside a smoke pot's cloud: soft and pale, clearest at the middle (SMOKE_SHADER), over the view and under the rest
+var smoke_amt := 0.0     # how deep in smoke he is, eased
 var head_blur := false   # Settings: only if the player asked for it (off unless picked), read as the fight begins
 var hurt := 0.0
 var knock := 0.0            # the body plate knocked by a blow
 var last_blood := 100.0
-var popups: Control
 var crosshair: Control
 var blind := {}
 var charge_bar: Control
@@ -203,10 +204,6 @@ func _ready() -> void:
 	_build_banner()
 	_build_corner()
 	_build_crosshair()
-	popups = Control.new()
-	popups.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	popups.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(popups)
 	match_.feed.connect(add_feed)
 	match_.banner.connect(show_banner)
 	_fit()
@@ -233,6 +230,24 @@ void fragment() {
 	vec3 a = textureLod(screen_tex, uv + sway, lod).rgb;
 	vec3 b = textureLod(screen_tex, uv - sway * 1.7, lod).rgb;
 	COLOR = vec4(mix(a, b, 0.35 * amount), 1.0);
+}
+"""
+
+## The view from inside a cloud of smoke (a smoke pot's: whoever stands in it sees to arm's length, and no one sees him from further off): the picture goes soft and pale, the more the
+## deeper in he is, the world clearest at the middle of the screen and swallowed at its edges, the smoke drifting a little.
+const SMOKE_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float amount = 0.0;
+uniform float t = 0.0;
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	vec2 c = (uv - vec2(0.5)) * vec2(1.0, 0.72);
+	float veil = amount * mix(0.45, 0.97, smoothstep(0.04, 0.6, length(c)));
+	float drift = 0.5 + 0.5 * sin(t * 0.7 + uv.x * 5.0 + uv.y * 3.0);
+	vec3 scene = textureLod(screen_tex, uv, amount * 2.4).rgb;
+	vec3 smoke = vec3(0.8, 0.79, 0.76) * (0.94 + 0.06 * drift);
+	COLOR = vec4(mix(scene, smoke, veil), 1.0);
 }
 """
 
@@ -287,6 +302,17 @@ func _build_vignette() -> void:
 	daze_fx.visible = false
 	root.add_child(daze_fx)
 	root.move_child(daze_fx, 0)
+	smoke_fx = ColorRect.new()
+	smoke_fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	smoke_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ssh := Shader.new()
+	ssh.code = SMOKE_SHADER
+	var ssm := ShaderMaterial.new()
+	ssm.shader = ssh
+	smoke_fx.material = ssm
+	smoke_fx.visible = false
+	root.add_child(smoke_fx)
+	root.move_child(smoke_fx, 1)
 	# A lost eye: that side of the world goes dark (a glass eye gives most of it back).
 	for side in ["R", "L"]:
 		var bg := Gradient.new()
@@ -847,15 +873,6 @@ func show_banner(text: String, sub: String) -> void:
 	tw.tween_property(banner_box, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(banner_box, "modulate:a", 1.0, 0.25)
 
-func popup(text: String) -> void:
-	var l := _label(text, 22, GOLD_PALE, true)
-	l.position = root.size * Vector2(0.5, 0.62) + Vector2(randf_range(-60, 40), 0)
-	popups.add_child(l)
-	var tw := create_tween().set_parallel()
-	tw.tween_property(l, "position:y", l.position.y - 90.0, 1.6)
-	tw.tween_property(l, "modulate:a", 0.0, 1.6).set_delay(0.6)
-	tw.chain().tween_callback(l.queue_free)
-
 # ---------- Each frame ----------
 
 func _ease_bar(key: String, v: float, dt: float) -> void:
@@ -978,6 +995,8 @@ func _prompt_for(f) -> Array:
 			if f.two_handed:
 				return [["grip", "swap"], "One hand · other side"]
 			return [["grip", "swap"], "Both hands · swap hands"]
+	if smoke_amt > 0.35:
+		return [[], Loc.t("In the smoke: you see to arm's length, and no one sees you from further off")]
 	return []
 
 func _set_prompt(p: Array) -> void:
@@ -1117,6 +1136,14 @@ func _process(dt: float) -> void:
 			var dm := daze_fx.material as ShaderMaterial
 			dm.set_shader_parameter("amount", dz)
 			dm.set_shader_parameter("t", float(Time.get_ticks_msec()) / 1000.0)
+		# In a cloud of smoke his view goes soft and pale (eased in and out as he steps in and the smoke thins).
+		var sd: float = match_.throwables.smoke_depth(f.head.global_position if not f.head.severed else f.torso.global_position) if match_.throwables != null and match_.throwables.has_smoke() else 0.0
+		smoke_amt = move_toward(smoke_amt, sd, dt * 1.6)
+		smoke_fx.visible = smoke_amt > 0.02
+		if smoke_fx.visible:
+			var sm := smoke_fx.material as ShaderMaterial
+			sm.set_shader_parameter("amount", smoke_amt)
+			sm.set_shader_parameter("t", float(Time.get_ticks_msec()) / 1000.0)
 		# The figure's voxels: rebuilt when he loses some, and now and then regardless.
 		columns_t -= dt
 		var columns_was_rebuilt := false
@@ -1132,10 +1159,6 @@ func _process(dt: float) -> void:
 			fig.queue_redraw()
 			body_panel.queue_redraw()
 			fig_t = 0.05
-		# The crowd's cheers for you.
-		for ev in match_.spectacle.events:
-			if ev.f == f and ev.amount > 0:
-				popup("+%d %s" % [ev.amount, Loc.t(String(ev.reason))])
 		var inv: Dictionary = me.get("inventory", {})
 		var bar := Throwables.hotbar_of(inv)
 		for i in slots.size():
@@ -1164,6 +1187,8 @@ func _process(dt: float) -> void:
 		vignette.modulate.a = 0.0
 		sight.modulate.a = 0.0
 		daze_fx.visible = false
+		smoke_fx.visible = false
+		smoke_amt = 0.0
 		for s in slots:
 			s.panel.visible = false
 		_set_prompt([])

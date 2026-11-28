@@ -214,6 +214,46 @@ func test_the_hand_of_jupiter_holds_and_hurls_a_man() -> void:
 	t.eq(float(PlayerInput.unpack(packed).get("wheel", 0.0)), -2.0, "a guest's wheel travels with his crosshair")
 	m.queue_free()
 
+## The smoke pot (user: it looked horrible, and nobody could tell what it did: it did nothing): a cloud of smoke that stands eight seconds and that nobody sees across, whoever is in it
+## seeing to arm's length and whoever is outside seeing nothing of what is inside it: a bot loses the man who hides in it, and finds him again when he comes out or comes near.
+func test_a_smoke_screen_hides_a_man_from_the_bots_beyond_arms_reach() -> void:
+	var m := _match()
+	m.me.f.teleport(Vector3(0, 0, -14))
+	var a = m.spawn_fighter({"kind": "bot", "name": "Hunter", "loadout": {}, "team": 0, "pos": Vector3(0, 0, -7), "yaw": 0.0})
+	a.erase("bot")
+	a.drive = func(_e): return {}
+	var b = m.spawn_fighter({"kind": "bot", "name": "Hider", "loadout": {}, "team": 1, "pos": Vector3(0, 0, 0), "yaw": PI})
+	b.erase("bot")
+	b.drive = func(_e): return {}
+	await _steps(30)
+	t.check(m.nearest_enemy(a, true) == b, "with no smoke the hunter sees the man across the sand")
+	m.throwables.explode("pot_smoke", Vector3(0, 0.3, 0), m.me.f)
+	t.check(m.throwables.zones.any(func(z): return z.type == "smoke"), "a cloud of smoke stands where the pot broke")
+	t.check(m.nearest_enemy(a, true) == null, "and the hunter has lost the man who is in it")
+	t.check(m.nearest_enemy(a) == b, "(it is the bots' sight it takes: a player's crosshair finds him as it did)")
+	b.f.teleport(Vector3(6, 0, 0))
+	await _steps(10)
+	t.check(m.nearest_enemy(a, true) == b, "the man who steps out of it is found again")
+	b.f.teleport(Vector3(0, 0, 0))
+	a.f.teleport(Vector3(0, 0, -1.2))
+	await _steps(10)
+	t.check(m.nearest_enemy(a, true) == b, "and one at arm's length is seen in the thick of it")
+	a.f.teleport(Vector3(0, 0, -2.6))
+	await _steps(10)
+	t.check(m.nearest_enemy(a, true) == null, "but not two paces off")
+	# Standing in it: what the screen shows (the HUD's haze), 0 outside to 1 at the middle, thinning with the cloud.
+	t.check(m.throwables.smoke_depth(Vector3(0, 1.6, 0)) > 0.9 and m.throwables.smoke_depth(Vector3(9, 1.6, 0)) == 0.0, "the haze on the screen is full at its middle and nothing outside")
+	for z in m.throwables.zones:
+		if z.type == "smoke":
+			z.t = 1.0
+	t.check(m.throwables.smoke_depth(Vector3(0, 1.6, 0)) < 0.6, "and thins with it as it ends")
+	for z in m.throwables.zones:
+		if z.type == "smoke":
+			z.t = 0.05
+	await _steps(20)
+	t.check(not m.throwables.has_smoke() and m.nearest_enemy(a, true) == b, "it is gone after its eight seconds, and the hunter sees him again")
+	m.queue_free()
+
 ## The trader's wares (user: the beehive and the fireball gone, the sand pot and the smoke pot one,
 ## a water skin and a torch added): on the market as they are now, and an old bag's gone kinds
 ## under their new names.

@@ -158,7 +158,7 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   and taken out again (`torch_burn` of the man's entry), and when it is spent (or knocked to
   pieces: no broken torch is left to pick up) one torch of the kit is used up and the weapon it
   took the place of is back in the hand; the water skin, poured over oneself, puts out the fire on him and
-  washes off acid; the smoke pot is the old sand pot and smoke pot in one; Greek fire is the old
+  washes off acid; the smoke pot (the old sand pot and smoke pot in one) is a screen of smoke across 3.2 m for eight seconds: pale billows that thin as they end, nobody in it sees further than arm's length (the HUD goes soft and pale, `HUD.SMOKE_SHADER`), nobody outside sees into it, and the bots lose a man who hides in it (`Throwables.smoke_blocks`, `Match.nearest_enemy(e, true)`); it hurts no one; Greek fire is the old
   fireball pot, burning oil that pools on the sand; the beehive is gone (the honey pot's bees stay).
   A bag from an older save keeps its wares under their new names. The thunder pot's blast is
   about two fifths weaker than it was (`Throwables.THUNDER`: power, reach, shove, ringing, and how
@@ -170,6 +170,17 @@ FOES=dragon,foe:titan godot --headless --path . -- --probe sweep   # automated b
   A kind with no file of its own breaks as clay (`pot_clay`); a build without the files falls back to the shatter
   `Sfx` makes on the fly (the pot's knock, a crack and single shards ringing down, no rattle of noise: that was a
   static at every impact). `project.godot` makes WAVs import uncompressed (`importer_defaults`).
+  **The net** (the retiarius's, and the weighted net of the kit) is a mesh of ropes that has no stiffness, only a length (`scripts/game/net_sim.gd`,
+  drawn by `shaders/net.gdshader`): gathered in the hand, flung open by the throw (it comes open in about half a second, turning), held back by the
+  air at its middle while its weighted rim leads, so that it comes down a bowl over the man it is thrown at (`Items.throw_net`: the throw is worked
+  out for how a net flies, and a net cannot be thrown further than `NET_RANGE`); where it meets a man it comes down over him (its middle is drawn onto his head, the rest of it hangs on him from there), closes round him and
+  holds him (a quarter of his pace for three seconds, four for the weighted net), then lets him go, falls from him and lies on the sand a while. A man
+  who runs out from under it is not caught. It never goes through a man: a knot is followed along its way against each part's padded box (the part as it will
+  be at the end of the step), a rope that comes to a limb is stopped at the face it came to, round a limb thinner than a rope is long the padding is made
+  up to it, the knots that lie on a man catch there and ride on his parts, and what is drawn is put about the bodies where they are when the frame is (the
+  threads between the net's own ropes are not drawn where a body is: `tests/test_items.gd` `test_a_net_never_goes_through_a_man`). A guest draws the nets the host has in the air as they fall over the men he sees, and lets a man go when the time of the net is out (`Items.update_guest_nets`).
+  The discus is a round plate that strikes what it meets for what its speed makes of it, glances off (a ricochet pays the crowd) and skips on the sand
+  to lie there; the boomerang is gone (a saved bag loses it quietly); the anvil pulps what it lands on (`Throwables.ANVIL_CRUSH_MAX`, the hit's `mangle`).
 - **Fists**: with both hands empty he stands in a boxer's guard (an empty hand beside a weapon
   hangs at his side), and a click throws a punch with an empty hand: the elbow stays bent as the
   fist is drawn in, opens on the way out and locks straight for the blow, then folds straight
