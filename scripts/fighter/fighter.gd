@@ -5934,7 +5934,7 @@ static func _body_color(p: VoxelPart) -> Color:
 ## since none of them is ever put in another's place), and the step's scalars for it.
 var _arm_refs: Array = []
 var _arm_kept := false   # the arm just driven was kept out of his body as well, in the same call of the core (control asks before it does that itself)
-var _arm_f := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_free and arm_armed (_arm_fill; a blade's own 46 to 59)
+var _arm_f := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_free and arm_armed (_arm_fill; a blade's own 46 to 59, a thrust's 67 to 72, both hands' 73 to 97)
 var _arm_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_plain, arm_elbow and arm_blade, in the order they read them
 var _off_k := PackedFloat64Array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])   # the step's scalars for VoxelCore.arm_off_two
 ## The step's scalars for VoxelCore.arm_free and arm_armed, in the order they read them (extension/src/arm_drive.cpp), and the fields they keep.
@@ -6054,6 +6054,38 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 	_arm_f[57] = FORE_LEN * S
 	_arm_f[58] = 1.0 if w.welded else 0.0
 	_arm_f[59] = 1.0 if w.holder == self else 0.0
+	# (Both hands on the weapon: the other hand's place and shoulder, the grip's two ends, the haft drive's memory, and the other arm's bones, for the core's own work of the front hand and the haft.)
+	if two_handed and side == two_side:
+		_arm_f[73] = 1.0
+		_arm_f[74] = 1.0 if weapon_joints[two_off()] else 0.0
+		_arm_f[75] = 1.0 if two_gap != null else 0.0
+		if two_gap != null:
+			_arm_f[76] = (two_gap as Vector3).x
+			_arm_f[77] = (two_gap as Vector3).y
+			_arm_f[78] = (two_gap as Vector3).z
+		var grip_diff: Vector3 = w.grip_off - w.grip_main
+		_arm_f[79] = grip_diff.x
+		_arm_f[80] = grip_diff.y
+		_arm_f[81] = grip_diff.z
+		var sh_off: Vector3 = shoulder[two_off()]
+		_arm_f[82] = sh_off.x
+		_arm_f[83] = sh_off.y
+		_arm_f[84] = sh_off.z
+		_arm_f[89] = haft_i.x
+		_arm_f[90] = haft_i.y
+		_arm_f[91] = haft_i.z
+		_arm_f[92] = haft_lp.x
+		_arm_f[93] = haft_lp.y
+		_arm_f[94] = haft_lp.z
+		_arm_f[95] = haft_raw.x
+		_arm_f[96] = haft_raw.y
+		_arm_f[97] = haft_raw.z
+		if _arm_refs.size() < 37:
+			_arm_refs.resize(37)
+		_arm_refs[35] = arm[two_off()].upper
+		_arm_refs[36] = arm[two_off()].fore
+	else:
+		_arm_f[73] = 0.0
 	# (hold_q and grip_q for a weapon that is no bow, which this one is not: asked above.)
 	var res: Array = nc.arm_armed(upper, fore, torso, head, w, fore.joint if fore.joint is Generic6DOFJoint3D else null, inp.get("main" if side == two_side else "off", {"x": 0.1 if side == "R" else -0.35, "y": 0.1}),
 			(e_was as Vector3) if e_was != null else Vector3.ZERO, MIRROR_GRIP_Q if side == "L" and two_side == "L" else GRIP_Q, GRIP_Q, t_pos, t_rot, yaw_q, shoulder[side], hand_point, torso.half_ext, head.half_ext,
@@ -6064,7 +6096,18 @@ func _drive_blade_plain(side: String, inp: Dictionary, w: Weapon, upper: VoxelPa
 	low_hand = maxf(low_hand, res[1])
 	if float(res[2]) >= 0.0:   # (a thrust along the blade's line: the body leans into a level stab)
 		thrust_lean = maxf(thrust_lean, res[2])
-	if side == two_side:
+	if res.size() > 3:
+		# (Both hands on the weapon: the off hand's place and the haft drive's memory, as the core has worked them out.)
+		var fl: int = res[3]
+		if fl & 1:
+			two_main = res[5]
+			two_gap = (res[6] as Vector3) if fl & 4 else null
+		if fl & 2:
+			two_front = res[4]
+		haft_i = res[7]
+		haft_lp = res[8]
+		haft_raw = res[9]
+	elif side == two_side:
 		if two_gap != null:
 			two_front = (res[0] as Vector3) + (two_gap as Vector3)
 			two_front += _out_front(two_front)
@@ -6234,11 +6277,11 @@ func _drive_arm(side: String, inp: Dictionary, live: bool, power: bool, stam_f: 
 	# goes on from here. With `keep_dt` given (control: the time since the arm was last kept out of his body) the core keeps it out as well, after the
 	# drive, and says so in _arm_kept.)
 	if Greedy.arm_drive_ok and not crawling and held_item == null and throw_anim == null and shove_t <= 0.0 \
-			and reach[side] == null and off_goal == null and grip_wait <= 0.0 and not two_handed:
+			and reach[side] == null and off_goal == null and grip_wait <= 0.0:
 		if w != null and not w.is_shield:
-			if _drive_blade_plain(side, inp, w, upper, fore, e_was, af, af_now, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt, keep_dt):
+			if (not two_handed or (side == two_side and Greedy.two_ok)) and _drive_blade_plain(side, inp, w, upper, fore, e_was, af, af_now, power, stam_f, blood_f, t_pos, t_rot, yaw_q, dt, keep_dt):
 				return
-		elif w != null or state != "stand" or not ((inp.get("jabAt") is Vector3) or (inp.get("grabAt") is Vector3 and inp.get("grab", false))):
+		elif not two_handed and (w != null or state != "stand" or not ((inp.get("jabAt") is Vector3) or (inp.get("grabAt") is Vector3 and inp.get("grab", false)))):
 			var nc_f := Greedy.nc
 			if nc_f != null:
 				var sc_f = _trunk_sculpt(side)

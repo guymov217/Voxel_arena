@@ -436,6 +436,8 @@ func _arm_restore(f: Fighter, st: Dictionary) -> void:
 		f.set(k, (st[k] as Dictionary).duplicate(true) if st[k] is Dictionary else st[k])
 	f._arm_refs = []   # (the fields were put back as copies: the core is handed the new ones)
 
+## (To find the step where a port parts from the script: `ARM_ONLY=zweihander,spear` runs only the loadouts of those main weapons, `ARM_STEPS=n` n steps of each in place of 600, and
+## `ARM_KEEP_OFF=1` leaves the arm's keeping out of his body out of it.)
 func test_native_arm_drive_matches_the_gdscript() -> void:
 	if Greedy.core() == null or not Greedy.arm_drive_ok:
 		t.check(true, "no native core with the arm's drive built: the GDScript drive runs")
@@ -454,7 +456,10 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	var blades := 0
 	var downs := 0
 	var two_offs := 0   # (the hand on a haft below the guard hand, VoxelCore.arm_off_two's: steps of it)
+	var plain_two := 0   # (the main hand of a man with both hands on the weapon, taken by the core as a plain step: the front hand's place, the haft drive)
 	var plain := 0
+	var old_core := 0   # (steps of a man with both hands on the weapon driven with a core that has the arm's drive but not the two-handed arms': the script's own for those)
+	var two_was := Greedy.two_ok
 	var sets := 0
 	var stills := 0
 	var kept := 0
@@ -462,6 +467,8 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	for lo in [{"main": "gladius", "off": "scutum", "armor": ["helmet", "lorica", "manica", "greaves"]}, {"main": "gladius", "off": ""}, {"main": "mace", "off": "scutum"},
 			{"main": "spear", "off": ""}, {"main": "dagger", "off": "scutum"}, {"main": "bow", "off": ""}, {"main": "spear", "off": "scutum"},
 			{"main": "zweihander", "off": ""}, {"main": "warhammer", "off": ""}, {"main": "longsword", "off": "", "armor": ["helmet", "lorica", "manica", "greaves"]}, {"main": "trident", "off": ""}]:
+		if OS.get_environment("ARM_ONLY") != "" and not (OS.get_environment("ARM_ONLY").split(",") as Array).has(lo.main):
+			continue
 		var m := Match.new()
 		add_child(m)
 		m.setup({"mode": "training", "training": {"enemy": "none", "respawn": false}, "headless": true, "seed": 5, "decrees": [], "hazards": [], "loadout": lo})
@@ -470,7 +477,7 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 		var f: Fighter = m.me.f
 		var rv := func(r: float) -> Vector3: return Vector3(rng.randf_range(-r, r), rng.randf_range(-r, r), rng.randf_range(-r, r))
 		var held_mark = null
-		for k in 600:
+		for k in (int(OS.get_environment("ARM_STEPS")) if OS.get_environment("ARM_STEPS") != "" else 600):
 			# (By turns the shield's or the empty hand's arm, and the blade's.)
 			var side: String = f.two_off() if k % 2 == 0 else f.two_side
 			var bodies := _arm_bodies(f, side)
@@ -537,6 +544,8 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 			if k % 15 == 4:
 				speeds[0] = Vector3(3.5, 0.0, 2.5)
 			var keep_dt: float = -1.0 if k % 5 == 4 else (1.0 / 120.0 if k % 3 != 0 else 1.0 / 60.0)
+			if OS.get_environment("ARM_KEEP_OFF") != "":
+				keep_dt = -1.0
 			if still:
 				f.player = false
 				f.is_bot = false
@@ -568,15 +577,27 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 			var hinge := fore_k.joint as Generic6DOFJoint3D
 			var lim0 := [hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT), hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT)]
 			# (Whether the core takes the blade's step as a plain one: asked of it as _drive_arm asks, on the same state, and that state put back.)
-			if side == f.two_side and f.weapons[side] != null:
+			if side == f.two_side and f.weapons[side] != null and (not f.two_handed or two_was):
 				_arm_restore(f, st)
 				_arm_set_speeds(bodies, speeds)
 				var e_was = f.elbow_prev[side]
 				if f._drive_blade_plain(side, inp, f.weapons[side], f.arm[side].upper, fore_k, e_was, f.arm_func(side), -1.0 if frost else f.arm_func(side), power, 0.9, 0.95, t_pos, t_rot, yaw_q, dt):
 					plain += 1
+					if f.two_handed:
+						plain_two += 1
 					reaches[snappedf(float(f.weapons[side].reach), 0.01)] = true
+			# (Both hands on the weapon and the other hand's joint gone for a step by turns: the front hand's place is left as it was, the haft not driven.)
+			var off_wj = null
+			var off_nulled := false
+			if f.two_handed and k % 17 == 9:
+				off_wj = f.weapon_joints[f.two_off()]
+				f.weapon_joints[f.two_off()] = null
+				off_nulled = true
 			var res := []
-			for native in [false, true]:
+			var modes := [[false, true], [true, true]]
+			if f.two_handed and two_was and k % 4 == 1:
+				modes.append([true, false])   # (and once more with a core that has the arm's drive but not the two-handed arms': the script's own drive for those, the same to the bit)
+			for mode in modes:
 				_arm_restore(f, st)
 				_arm_set_speeds(bodies, speeds)
 				if set0 == null:
@@ -591,7 +612,8 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 				f._rec_memo.clear()
 				f._plate_memo = null
 				f._beast_memo = -1
-				Greedy.arm_drive_ok = native
+				Greedy.arm_drive_ok = mode[0]
+				Greedy.two_ok = mode[1] and two_was
 				# (As Fighter.control's loop over the arms does: the drive, then the arm kept out of his body unless the core's own call has done that.)
 				f._arm_kept = false
 				f._drive_arm(side, inp, true, power, 0.9, 0.95, t_pos, t_rot, yaw_q, dt, keep_dt)
@@ -604,7 +626,10 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 						f._keep_elbow_low(side, keep_dt)
 				res.append([_arm_live(bodies), _arm_state(f), [(fore_k.get_meta("elbow_set") if fore_k.has_meta("elbow_set") else null),
 					hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_LOWER_LIMIT), hinge.get_param_x(Generic6DOFJoint3D.PARAM_ANGULAR_UPPER_LIMIT)]])
+			if off_nulled:
+				f.weapon_joints[f.two_off()] = off_wj
 			Greedy.arm_drive_ok = true
+			Greedy.two_ok = two_was
 			fore_k.frozen_until = 0.0
 			f._arm_phase = false
 			f.player = true
@@ -616,11 +641,28 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 			f.stagger = 0.0
 			f.limp = false
 			if res[0][0] != res[1][0]:
-				bad.append("speeds, k=%d" % k)
-			elif res[0][1] != res[1][1]:
-				bad.append("his fields, k=%d" % k)
-			elif res[0][2] != res[1][2]:
+				var first := -1
+				for vi in (res[0][0] as Array).size():
+					if res[0][0][vi] != res[1][0][vi]:
+						first = vi
+						break
+				var diffs := []
+				for vi in (res[0][0] as Array).size():
+					if res[0][0][vi] != res[1][0][vi]:
+						diffs.append("%d:%s" % [vi, ((res[0][0][vi] as Vector3) - (res[1][0][vi] as Vector3)) * 1e6])
+				bad.append("speeds of %s, %s, k=%d, the %s (script minus core, in micro) with %s, stab %s, still %s, state %s, two_front %s" % [lo.main, side, k, ", ".join(PackedStringArray(diffs)), str(inp.keys()), stab, still, f.state, f.two_front != null])
+			if res[0][1] != res[1][1]:
+				var names := []
+				for nm in res[0][1]:
+					if res[0][1][nm] != res[1][1][nm]:
+						names.append("%s %s / %s" % [nm, str(res[0][1][nm]), str(res[1][1][nm])])
+				bad.append("his fields of %s, k=%d: %s" % [lo.main, k, ", ".join(PackedStringArray(names)).left(400)])
+			if res[0][2] != res[1][2]:
 				bad.append("his elbow's set, k=%d" % k)
+			if res.size() > 2:
+				old_core += 1
+				if res[2] != res[0]:
+					bad.append("the two-handed arms by the script, the others by the core, of %s, k=%d" % [lo.main, k])
 			if res[1][2][0] != null:
 				sets += 1
 			var q_was = (st["aim_q"] as Dictionary)[side]
@@ -652,6 +694,8 @@ func test_native_arm_drive_matches_the_gdscript() -> void:
 	t.check(bad.is_empty(), "the core's arm drive leaves what the script's does, to the bit (%d differ: %s)" % [bad.size(), ", ".join(PackedStringArray(bad.slice(0, 6)))])
 	t.check(driven > 5500 and homes > 120 and blades == 3300 and downs > 100, "and it was the drive at work: %d of 6600 steps pushed a body, %d with a fist on its way home, %d a blade's arm, %d of a man down" % [driven, homes, blades, downs])
 	t.check(two_offs > 1000, "the hand on a haft below the guard hand among them (two-handers' own): %d of 6600 steps" % two_offs)
+	t.check(plain_two > 400 or not two_was, "and the guard hand's, both hands on the weapon, in the core's own call: %d steps of 1500" % plain_two)
+	t.check(old_core > 150 or not two_was, "and with a core that lacks the two-handed arms, the script's own drive for them, the rest the core's: %d steps" % old_core)
 	t.check(plain > 1100 and plain < 2900 and sets > 300 and reaches.size() >= 4, "the blade's steps the core takes as plain ones and those it hands back to the script both: %d of 3300 its own (the bow's none), %d steps left an elbow set, blades of %s m" % [plain, sets, reaches.keys()])
 	t.check(stills > 60, "a blade all but still among them: %d steps turned its line between 0.0007 and 0.004 of a radian" % stills)
 	t.check(kept > 1400, "and the arm kept out of his body after the drive, in the core's own call: %d of 6600 steps" % kept)

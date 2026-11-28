@@ -1090,3 +1090,38 @@ and 33 ms of the game's time let go with the cap at 4). With the frame c steps l
 
 That is the valve's policy (#328) as the room puts it now: not the owner's choice between slow motion and a slide show only above 8.6 ms a step, but between the chains of long frames in every heavy moment and a
 little slow motion in them. A steady frame shorter than the cap's frames is not touched by any of it.
+
+## 29. The arms of a man with both hands on the weapon, in the core (#344)
+
+A man who holds a weapon in both hands (a zweihander, a warhammer, a longsword with the off hand empty, a trident, a falx, a spear) drives two arms through a path of their own, and it was the dearest piece of
+the men's `control` that the core did not do (section 27: the guard hand's drive 190-210 microseconds a call in script, the hand on the haft below it 13 microseconds). Both are in the core now, to the bit:
+
+- **The hand on the haft below the guard hand** (`VoxelCore.arm_off_two`, from `Fighter._drive_arm` where the script's `if side == two_off() and two_handed ...` block began): the giant's branch, the elbow's routing with the
+  preferences, `ad_elbow_dir`, `ad_twist_to`, the weight's impulses and the pull of the front hand. It answers nothing and changes nothing but the bodies' velocities; a hand whose joint is gone (a weapon dropped, a cut)
+  is the script's, as it was.
+- **The guard hand** is a mode of `arm_armed` (`kk[73] != 0`: the parameters 73 to 97 of `_arm_f` and the other arm's two bodies in `_arm_refs[35..36]`; the answer is ten numbers long and carries what the script wrote to
+  `two_main`, `two_gap`, `two_front`, `haft_i`, `haft_lp` and `haft_raw`): the strength and the mark's shape of both hands (`arm_mark_core`'s `two` flag), the front hand's place (the block of the thrust's line and of the
+  weapon's own line), the elbow's variants (0.06 and 5 in place of 0.18 and 12, a guard's bend of 0.9 and a stroke's of 1.6, a stroke's hold of 6 in place of 0.2) and the drive of the haft (`arm_blade_impl`: the haft's own torque on the weapon, the
+  trunk and both upper arms, its constants 12, 6 and 70). The steps that are not plain ones (a jab, a throw, a frost on the forearm, a hand that is not there) are handed back to the script untouched, as for any blade.
+
+`Greedy.two_ok` says the loaded core has them (it has `arm_off_two`, which an older core has not): with an older core the two-handed arms are the script's, as they were, to the bit, and the drive API stays 5.
+
+**What the script did that the first port left out.** A two-handed thrust differed from the script's in one step of about 6600 by a unit in the last place of one velocity: in its front-hand block the script lays the
+thrust's line into the body's frame a second time (`_line_in_body(tl2)`), and the line that `_hold_thrust_line` is handed afterwards is that second one, not the first; the core takes the line it computed the second time
+(`m.line_o`, `m.line_dir`). Found by bisecting the one step (switches in the test for the number of steps, the arm kept out, the quaternion arithmetic, and a trace of the front block against the script's).
+
+**Measured.** A melee of twelve men on the sand (zweihander, spear, warhammer, longsword, trident, falx, twice over, in two teams; `Greedy.two_ok` on or off, the same fight to the bit), the time of a step after the first
+second, 1000 steps, seven pairs run one after the other: the core 9.26-9.90 ms, the script 10.09-12.64 ms, the core faster in every pair by 4-22% (median 12.7%; the best of each, 8%). In a call (the test's own mix of steps,
+with the steps the core hands back and the arm's keeping out in it): the guard hand 314 -> 160 microseconds, the hand below it 109 -> 81. A room with a mix of weapons has fewer such men (an estimate from the profile of section 27: about 4% of a step
+with a third of the men two-handed, the 8-12% above only in a crowd of them).
+
+**Held by**: `test_native_arm_drive_matches_the_gdscript` (11 loadouts now: the four two-handed ones with an armoured longsword among them, 6600 steps; every body's velocity bit for bit, the fields, the elbow's set and limits;
+the other hand's joint gone for a step by turns; and a third pass for the two-handed men with `two_ok` off, which has to leave what the script leaves with the one-handed arms still the core's), a longer run of 12,500
+steps by hand (0 differences), the replay fingerprints of four runs (16 men and 6 men with gladius, axe, mace and spear; two mixes of 24 with the game's bows, zweihanders, flails, trident, hammers, giants and creatures; 0 of 40 lines differ from the figures before the port) and the suite.
+
+**The Linux binary.** The container this was built in has GCC 13 and glibc 2.39: a Linux library built here asks for `GLIBC_2.38`, where the committed one (GCC 9.3) asks for 2.29 or less and runs on the Steam
+Deck and the older distributions. So only the Windows library is rebuilt (mingw, statically linked, no new dependency) and committed; the committed Linux library is the old one, which has no `arm_off_two`: there `two_ok` is false and
+the two-handed arms run in the script, the same fight to the bit. **To do on a machine with an older toolchain**: `cd extension && scons platform=linux target=template_release arch=x86_64 -j4`, then run
+`--test test_native` there (the test reports the third pass's count) and commit `native/bin/libvoxelcore.linux.template_release.x86_64.so`.
+
+**Left** (all exact): an archer's arms, a shove's, a crawler's (about 1 million a fighting step together), the two legs' calls' glue, the kick.
