@@ -51,8 +51,8 @@ const TWO_HAND_BLOW := 1.2       # a blow with both hands on the haft, over one
 ## cap), the least it lands with (the weight of the man is behind it, whatever the foot's own speed when it meets him), how much more of an impulse is put on his trunk (N s) and how fast the
 ## whole of him is sent back over it (m/s, by a man's own weight against his: sent back, not launched), and how likely he is to be felled by it.
 const PUSH_BLOW := 0.9
-const PUSH_CAP := 28.0
-const PUSH_JMIN := 40.0
+const PUSH_CAP := 8.0     # (user, "really strong": its harm was J 40, which took 62 voxels off a belly, 5% of his blood and an organ, now J 28: about a third of that; the shove is not the blow's)
+const PUSH_JMIN := 28.0
 const PUSH_SHOVE := 40.0
 const PUSH_DV := 1.0
 const PUSH_FELL := 0.8
@@ -472,6 +472,18 @@ func _settle() -> void:
 			_note_touch(t[1], t[0], t[2])
 	touch_q.clear()
 
+## Whether `part` is of an arm that holds a man (`held`: Fighter.holding, the side of its hand and, with the second hand on him, that one's).
+## A beast's hold is the whole beast's: nothing of it strikes the man it has.
+func _holds_with(af, part, held: Dictionary) -> bool:
+	if af is Beast or not (af.get("arm") is Dictionary):
+		return true
+	for h in [held, held.get("extra")]:
+		if h is Dictionary and (af.arm as Dictionary).has(h.get("side", "")):
+			var a: Dictionary = af.arm[h.side]
+			if part == a.fore or part == a.upper:
+				return true
+	return false
+
 func process_contacts(_dt: float) -> Array:
 	var groups := {}
 	if canonical:
@@ -538,11 +550,13 @@ func process_contacts(_dt: float) -> Array:
 				continue
 			if af.state != "stand" or not af.alive or att.severed:
 				continue
-			# The man a giant holds is not struck by his holder: what the arm does to him is the hold, the
+			# The man a giant holds is not struck by the arm that holds him: what that arm does to him is the hold, the
 			# slam and the throw (Social). (Brought into the fist, the man hung in the swinging arm was
-			# beaten by it, forearm and trunk, before he was ever thrown.)
+			# beaten by it, forearm and trunk, before he was ever thrown.) The other arm, a foot and a head are his to
+			# strike with (user: holding an enemy with one hand, the other hand has to be able to punch him; every
+			# strike of the whole man was let go by here, whichever of his parts it was).
 			var held = af.holding
-			if held != null and held.get("target") != null and held.target.f == vf:
+			if held != null and held.get("target") != null and held.target.f == vf and _holds_with(af, att, held):
 				continue
 			# (Nor the man he has just let go of, while the arm is still following through: he leaves the
 			# hand with the speed it gave him, and the landing is what hurts him.)

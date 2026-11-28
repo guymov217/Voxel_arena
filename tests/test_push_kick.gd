@@ -106,7 +106,7 @@ func test_a_long_press_waits_with_the_knee_up_and_goes_out_by_itself() -> void:
 	t.check(absf(d.held_s - Fighter.PUSH_HOLD) < 0.03, "it waits no longer than the long press asks (%.2f s held past the knee; it asks %.2f)" % [d.held_s, Fighter.PUSH_HOLD])
 	var out: Array = d.wind.filter(func(w): return w[1] == 2 and w[5])
 	t.check(not out.is_empty(), "and it goes out by itself, with the key still down (%d samples)" % out.size())
-	t.check(d.hits.size() == 1 and d.hits[0][2] == 1.0 and d.hits[0][0] >= 39.0, "and lands once, as a push kick (%s)" % str(d.hits))
+	t.check(d.hits.size() == 1 and d.hits[0][2] == 1.0 and d.hits[0][0] >= 27.0, "and lands once, as a push kick (%s)" % str(d.hits))
 	t.check(d.hits.size() == 1 and d.hits[0][6], "the key not yet let go when it lands")
 	_free(d)
 
@@ -120,6 +120,27 @@ func test_the_push_kick_costs_breath_over_the_kicks_twelve() -> void:
 	_free(hard)
 	t.check(plain_left > 0.0 and plain_left - hard_left >= Fighter.PUSH_COST - 3.0, "it takes its breath: %.0f left after a plain kick, %.0f after a push kick (it costs %.0f over)" % [plain_left, hard_left, Fighter.PUSH_COST])
 
+## The voxels a man has lost: what the same body of another man, untouched, has over him.
+func _lost(whole: Fighter, hurt: Fighter) -> int:
+	var n := 0
+	for i in hurt.parts.size():
+		n += int(whole.parts[i].alive_count) - int(hurt.parts[i].alive_count)
+	return n
+
+## User ("really strong"): a push kick shoves hard but wounds modestly: its blow is J 28 (the plain kick's is 20; it was 40, which took 62 voxels off a belly, 5% of his blood and hurt an organ).
+func test_a_push_kick_wounds_modestly_not_a_third_more_than_a_plain_one() -> void:
+	var plain := await _duel(0.0, 30)
+	var plain_lost := _lost(plain.kicker, plain.victim)
+	_free(plain)
+	var d := await _duel(1.0, 31)
+	var lost := _lost(d.kicker, d.victim)
+	var blood: float = 100.0 - d.victim.blood
+	t.check(d.hits.size() == 1 and d.hits[0][0] < 30.0 and d.hits[0][0] > 20.0, "its blow is between the plain kick's and what it was (J %s)" % str(d.hits))
+	t.check(lost > plain_lost and lost < 40, "it takes a few dozen voxels, more than the plain kick (%d against %d), not the 62 it took" % [lost, plain_lost])
+	t.check(blood < 2.5, "and under two and a half per cent of his blood (%.1f), not five" % blood)
+	t.check(d.vmax > 3.0, "while it sends him back as hard as it did (%.1f m/s)" % d.vmax)
+	_free(d)
+
 func test_the_strength_is_the_same_however_long_the_key_is_held() -> void:
 	# (Not a charge: held for a little over the long press or for a long while, the same kick.)
 	var rows := []
@@ -128,7 +149,7 @@ func test_the_strength_is_the_same_however_long_the_key_is_held() -> void:
 		rows.append({"J": d.hits[0][0] if d.hits.size() > 0 else 0.0, "push": d.hits[0][2] if d.hits.size() > 0 else -1.0, "v": d.vmax, "winded": d.hits.size() > 0 and d.hits[0][4]})
 		_free(d)
 		await _steps(2)
-	t.check(rows.all(func(r): return r.push == 1.0 and r.J >= 39.0 and r.winded), "each lands as the one push kick and takes his wind (%s)" % str(rows))
+	t.check(rows.all(func(r): return r.push == 1.0 and r.J >= 27.0 and r.winded), "each lands as the one push kick and takes his wind (%s)" % str(rows))
 	t.check(absf(rows[0].J - rows[2].J) < 0.5 and absf(rows[0].v - rows[1].v) < 0.2 * rows[0].v and absf(rows[0].v - rows[2].v) < 0.2 * rows[0].v, "the blow and the shove are the same (J %.1f, %.1f, %.1f; his top speed %.1f, %.1f, %.1f m/s)" % [rows[0].J, rows[1].J, rows[2].J, rows[0].v, rows[1].v, rows[2].v])
 
 func test_a_push_kick_lands_on_his_belly_in_one_blow() -> void:
@@ -228,7 +249,7 @@ func test_a_push_kick_lands_on_a_beast_as_a_blow_and_a_shove() -> void:
 					st.hold = false
 		if hits.size() > 0:
 			landed += 1
-			t.check(hits.size() == 1 and hits[0][1] > 0.99 and hits[0][0] >= 39.0, "it lands once and as a push kick (%s, gap %.1f)" % [str(hits), gap])
+			t.check(hits.size() == 1 and hits[0][1] > 0.99 and hits[0][0] >= 27.0, "it lands once and as a push kick (%s, gap %.1f)" % [str(hits), gap])
 		t.check(a.f.kick_timer == 0.0 and a.f.kick_wind == 0, "and the kick ends (gap %.1f)" % gap)
 		m.queue_free()
 		await _steps(2)

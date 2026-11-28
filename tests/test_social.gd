@@ -120,6 +120,61 @@ func test_grab_hold_and_throw_a_man() -> void:
 	t.check(b.f.state != "stand", "and lands on the sand")
 	m.queue_free()
 
+## User: holding an enemy with one hand, the other hand has to be able to punch him (Combat let go every strike of the holder's whole
+## body at the man he held, whichever of his parts it was; now only the arm that holds him lets him be): the free fist lands, the holding arm
+## does not strike what it holds, with either hand holding.
+func test_a_man_holding_a_foe_with_one_hand_punches_him_with_the_other() -> void:
+	for hold_side in ["R", "L"]:
+		seed(4)   # (a held man tears free now and then, Social._holding: not in these two seconds)
+		var punch_side: String = "L" if hold_side == "R" else "R"
+		var m := _match()
+		m.me.f.state = "dead"
+		var st := {"phase": "wait", "jab": false}
+		var a := _man(m, Vector3(0, 0, 0), 0.0, {}, "A", 0, func(_e):
+			var i := {"main": {"x": 0.1, "y": 0.4}, "off": {"x": -0.1, "y": 0.4}, "look": {"yaw": 0.0, "pitch": 0.0}}
+			if st.phase == "grab":
+				i.grab = true
+				i.grabHands = hold_side
+				st.phase = "hold"
+			if st.jab:
+				i["jabR" if punch_side == "R" else "jabL"] = true
+				st.jab = false
+			return i)
+		var b := _man(m, Vector3(0, 0, 0.7), PI, {}, "B", 1, _idle)
+		await _steps(150)
+		var shift: Vector3 = a.f.hand_world(hold_side) + Vector3(0, 0, 0.25) - b.f.torso.global_position
+		shift.y = 0.0
+		for p in b.f.parts:
+			p.global_position += shift
+		var free_hits := []
+		var holding_arm_hits := 0
+		m.combat.hit.connect(func(h):
+			if h.get("attacker") == a.f and h.get("char") == b.f and h.get("punch", false) and a.f.holding != null:
+				var an := String(h.att_part.part_name) if h.get("att_part") != null else ""
+				if an.ends_with(punch_side):
+					free_hits.append(float(h.get("J", 0.0)))
+				elif an.ends_with(hold_side):
+					holding_arm_hits += 1)
+		st.phase = "grab"
+		for i in 90:
+			await get_tree().physics_frame
+			if a.f.holding != null:
+				break
+		t.check(a.f.holding != null and a.f.holding.side == hold_side, "%s hand: he took hold of him" % hold_side)
+		if a.f.holding == null:
+			m.queue_free()
+			continue
+		var blood0: float = b.f.blood
+		for k in 4:
+			st.jab = true
+			await _steps(50)
+		t.check(a.f.holding != null, "%s hand: and held him through the blows" % hold_side)
+		t.check(free_hits.size() >= 2, "%s hand holding: the other fist lands on him (%d blows, J %s)" % [hold_side, free_hits.size(), str(free_hits)])
+		t.check(holding_arm_hits == 0, "the arm that holds him does not strike him (%d)" % holding_arm_hits)
+		t.check(b.f.blood < blood0, "and it hurts (%.1f of his blood gone)" % (blood0 - b.f.blood))
+		m.queue_free()
+		await get_tree().physics_frame
+
 ## A man's grab is a reach (user: no physical contact at all when a player pressed the grab button
 ## on a foe; the hand took whatever part of him had its middle within 70 cm of it, from where it
 ## hung): the hand goes out to him and takes hold only when it is on him; a man out of the arm's
