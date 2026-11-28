@@ -9,6 +9,7 @@ rem   diagnose.bat --quick           the same, shortened (a few minutes), for a 
 rem   diagnose.bat --size 1920x1080  the size of the windows the parts are drawn in (1280x720 by default, as the playtest)
 rem   diagnose.bat --skip room       leave a part out (steps, release, fight, render, room, or an id from the report)
 rem   diagnose.bat --all             every part there is, the ones the reports have answered too (cores, threads, sound, caches, the other renderer, full screen, priority): 50 minutes
+rem   diagnose_decide.bat           (its own file) only the experiments that answer what is still open: the men's controls on the worker threads, Godot's render thread: about 16 minutes
 rem The third version (after the second report) asks what is left to ask of this computer: the room in the release build again (the dead now rest), what the drawing of a fight's
 rem leavings costs on this card (a fight stopped where it is, each kind of thing taken out of the picture in turn).
 rem The second version (after the first report) asked what only this computer can say: how fast each of the processor's cores is and which of them Windows gives the game

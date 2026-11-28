@@ -1056,3 +1056,37 @@ the bodies in one call, the lists in the core), `test_an_arrows_questions_of_a_p
 - *the frame*: `_seat_drawing` 3.6 (the parts' loop 1.2, `_off_clear_drawing` 1.5 for a two-hander, the guard arm's turn 0.5, the grip 0.3), the shoulder guards 1.45 and the limbs in armour 0.5, `Match._process` 1.5,
   the parts' own `_process` 1.0 (101 calls: the engine's property sets), the weapons' 0.9, `_bend_drawing` 0.4.
   Each is one to two per cent of a step's work once the frame's weight is taken: a port of the two-handed arm drive (the one that is largest) is the next piece.
+
+## 28. The sixth and seventh reports: the games with no window were throttled; what the room says now
+
+The sixth report (`a7c6925a`) found the fixed piece of script work taking 130 ms against the test's own machine's 66 (0.51 times as fast) in the parts with no window, and 58 in the parts with one. The guess of
+section 15 (Windows gives a process with no window the efficiency cores at a low clock, EcoQoS) was answered by the game itself: the native extension now asks Windows not to throttle the process
+(`keep_the_game_fast`, Windows only, `SetProcessInformation` with the power-throttling state; a `--friend` window, which should take little of the host's cores, is left as Windows has it; `1e899fe`). The seventh report:
+
+| | sixth (`a7c6925a`) | seventh (`1e899fe`) |
+|---|---|---|
+| the fixed piece of script work, no window | 130 ms (0.51 times) | 59 ms (1.12 times) |
+| a step, no window: 4 men / 8 / 8 + 3 foes / 8 + 8 foes | 2.95 / 5.02 / 9.05 / 13.67 ms | 1.58 / 2.53 / 4.62 / 7.78 ms (-43 to -50%) |
+| the same fixed piece in the games with a window, in play (fight, release fight, room) | 8.3 / 7.7 / 8.4 ms | 7.4 / 7.2 / 8.6 ms (the same) |
+| the fight in a window, debug build | 39.4 ms a frame, 85% speed | 22.5 ms, 98% |
+| the room, release build (8 players, 7 friend windows), speed and frames a second in each half minute | 97-100%; 38, 53, 60, 57, 36 | 100%; 42, 60, 46, 42, 59 |
+
+So the game as played was never throttled (a process with a window was not); the figures of the parts with no window (the steps, the release steps, the threads, the native core's share) were up to twice too dear in
+the first six reports, and only their ratios stand. The first measure of the men's controls on the threads (-13, -8, +3%, the second report) was taken in those parts, where the worker threads were throttled too: **to be taken again**
+(`tools/diagnose_decide.bat`: the step, the fight and the room with the threads, and the fight with the render thread, each beside the same without, 16 minutes).
+
+**What the room says now.** The speed is 100% all through (the valve of section 12 never closes: the steps cost 6.8 ms at most, its line is 8.6). The frames are 60 when few are on the sand and 22-35 in the stretches
+where the foes come in (a step 5.4-6.8 ms, the frame's rest 8.6-8.9 ms, 14 men and more on the sand); 76 frames of the first half minute and 120 of the 150 seconds were over 50 ms, in clusters (a dozen frames of
+55-90 ms, six to nine steps each, within three or four seconds). That is the room's catch-up (`Net.ROOM_STEPS_MAX` 12 within `PHYSICS_BUDGET_MS` 50, kept so that a host that falls behind does not slow every guest's world): a late frame
+asks for the steps it missed, which makes the next frame late too, and it dies away slowly (a single 45 ms bump with a step of 5.5 ms and a rest of 7: frames of 63, 51, 40 and 34 ms with the cap at 12; one of 63 ms
+and 33 ms of the game's time let go with the cap at 4). With the frame c steps long and the speed 1000 c / (120 (c s + r)), in a heavy moment of the report (s 6.6 ms, r 8.9 ms, 100.4 s):
+
+| steps a frame at most | frames a second | speed of the game |
+|---|---|---|
+| 12 (now; the frame settles at r / (1 - 120 s)) | 23 (the record at that second: 19) | 100% |
+| 4 | 28 | 94% |
+| 3 | 35 | 87% |
+| 2 | 45 | 75% |
+
+That is the valve's policy (#328) as the room puts it now: not the owner's choice between slow motion and a slide show only above 8.6 ms a step, but between the chains of long frames in every heavy moment and a
+little slow motion in them. A steady frame shorter than the cap's frames is not touched by any of it.
